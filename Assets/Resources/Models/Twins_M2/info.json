@@ -1,0 +1,23 @@
+{
+ "modelName": "Twins_M2",
+ "scale": 0.0011025317270596934,
+ "height": 0.4388,
+ "gunPivot": {
+  "x": 0,
+  "y": 0.105,
+  "z": 0.6099
+ },
+ "muzzle": {
+  "x": 0.0,
+  "y": 0.0,
+  "z": 0.8272
+ },
+ "muzzleSide": 0.348,
+ "color": [
+  0.42,
+  0.47,
+  0.3
+ ],
+ "smoothness": 0.25,
+ "metallic": 0.15
+}

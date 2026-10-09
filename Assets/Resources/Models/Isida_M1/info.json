@@ -1,0 +1,23 @@
+{
+    "modelName":  "Isida_M1",
+    "scale":  0.000736035151634132,
+    "height":  0.445,
+    "gunPivot":  {
+                     "x":  0.0,
+                     "y":  0.16,
+                     "z":  0.56
+                 },
+    "muzzle":  {
+                   "x":  0.0,
+                   "y":  0.0,
+                   "z":  0.245
+               },
+    "muzzleSide":  0.175,
+    "color":  [
+                  0.42,
+                  0.47,
+                  0.3
+              ],
+    "smoothness":  0.25,
+    "metallic":  0.15
+}

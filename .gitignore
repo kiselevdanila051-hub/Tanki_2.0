@@ -1,0 +1,53 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Unity cache
+[Aa]ssets/[Aa]ssets/[Ss]treamingAssets/
+.vs/
+.gradle/
+.consulo/
+
+# IDE files
+.idea/
+.vscode/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svclog
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Crash reports
+sysinfo.txt
+
+.claude/
+.claude*
+tools/
+Tools/
+TOOLS/
+Paints/
+
+# Keep Unity project configuration and source
+!Assets/
+!Packages/
+!ProjectSettings/
+CLAUDE.md

@@ -9,6 +9,7 @@ public class TurretController : MonoBehaviour
 
     TankInput input;
     StatusEffects status;
+    TankController controller;
 
     public float AimYaw
     {
@@ -19,11 +20,14 @@ public class TurretController : MonoBehaviour
     {
         input = GetComponent<TankInput>();
         status = GetComponent<StatusEffects>();
+        controller = GetComponent<TankController>();
     }
 
     void LateUpdate()
     {
         if (turret == null || input == null) return;
+        // Перевёрнутый танк лежит на башне (её капсула — часть коллайдера): поворот толкал бы танк по земле
+        if (controller != null && controller.Overturned) return;
         float slow = status != null ? status.SpeedMultiplier : 1f; // Фриз замедляет и башню
 
         float hullYaw = transform.eulerAngles.y;

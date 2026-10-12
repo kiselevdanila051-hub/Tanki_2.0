@@ -3,6 +3,9 @@
 // Движение корпуса в духе Танков Онлайн: танк разворачивается на месте, разгоняется и тормозит
 // не мгновенно, боковое скольжение быстро гасится. Теперь это работает вдоль поверхности земли:
 // направление берётся от подвески (TankSuspension), поэтому на склонах танк едет вдоль склона.
+// Перевёрнутый танк (TankSuspension.Overturned) не едет и не поворачивает: лежит, где упал. Обычно у коллайдера нет
+// трения (скорость задаём сами), а лёжа он скользил бы бесконечно — на это время ставится материал с трением, и сдвинуть
+// танк может только внешняя сила: отдача своего выстрела или союзник, толкающий корпус.
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(TankInput))]
 public class TankController : MonoBehaviour
@@ -16,6 +19,70 @@ public class TankController : MonoBehaviour
     TankInput input;
     StatusEffects status;
     TankSuspension suspension;
+    Collider hullCol;
+    PhysicsMaterial driveMat;                 // материал коллайдера на гусеницах (без трения)
+    bool resting;                             // перевёрнут — коллайдеру поставлено трение
+    static PhysicsMaterial restMat;
+    // Формы коллайдера (задаёт TankBuilder): на гусеницах — коробка по корпусу и башне; перевёрнутый — коробка только по
+    // корпусу и скруглённая капсула башни, чтобы танк не лежал ровно на «крыше» коробки, а заваливался набок
+    Vector3 uprightCenter, uprightSize, hullOnlyCenter, hullOnlySize;
+    Collider turretShape;
+    bool hasShapes;
+
+    public void SetShapes(Vector3 uprightC, Vector3 uprightS, Vector3 hullC, Vector3 hullS, Collider turret)
+    {
+        uprightCenter = uprightC; uprightSize = uprightS;
+        hullOnlyCenter = hullC; hullOnlySize = hullS;
+        turretShape = turret;
+        hasShapes = true;
+        resting = false;
+        ApplyShape(false);
+    }
+
+    void ApplyShape(bool overturned)
+    {
+        if (hullCol != null) hullCol.sharedMaterial = overturned ? RestMaterial : driveMat;
+        if (!hasShapes) return;
+        BoxCollider box = hullCol as BoxCollider;
+        if (box != null)
+        {
+            box.center = overturned ? hullOnlyCenter : uprightCenter;
+            box.size = overturned ? hullOnlySize : uprightSize;
+        }
+        if (turretShape != null)
+        {
+            turretShape.sharedMaterial = overturned ? RestMaterial : driveMat;
+            turretShape.enabled = overturned;
+        }
+    }
+
+    // Танк перевёрнут (подвеска считает его лежащим на боку или на крыше) — для TurretController: башня не крутится
+    public bool Overturned
+    {
+        get { return resting; }
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics()
+    {
+        restMat = null;
+    }
+
+    // Трение лежащего танка: умеренное — перевёрнутый танк сохраняет инерцию (скользит и катится, постепенно теряя скорость),
+    // но сам её не набирает; в покое держится на месте и на пологом склоне, союзник может столкнуть, отдача — сдвинуть
+    static PhysicsMaterial RestMaterial
+    {
+        get
+        {
+            if (restMat == null)
+                restMat = new PhysicsMaterial("Overturned")
+                {
+                    staticFriction = 0.4f, dynamicFriction = 0.25f, bounciness = 0f,
+                    frictionCombine = PhysicsMaterialCombine.Minimum, bounceCombine = PhysicsMaterialCombine.Minimum
+                };
+            return restMat;
+        }
+    }
 
     [Header("Настройка ходовой")]
     public float accelerationScale = 0.45f;   // доля «паспортного» разгона корпуса (меньше — разгон дольше)
@@ -48,6 +115,8 @@ public class TankController : MonoBehaviour
         input = GetComponent<TankInput>();
         status = GetComponent<StatusEffects>();
         suspension = GetComponent<TankSuspension>();
+        hullCol = GetComponent<Collider>();
+        if (hullCol != null) driveMat = hullCol.sharedMaterial;
 
         rb.constraints = RigidbodyConstraints.None;                       // корпус может наклоняться
         rb.interpolation = RigidbodyInterpolation.Interpolate;
@@ -83,6 +152,19 @@ public class TankController : MonoBehaviour
 
     void FixedUpdate()
     {
+        // Перевёрнут — не двигаем: лежит с трением, пока его не сдвинет отдача или союзник
+        bool overturned = suspension != null && suspension.Overturned;
+        if (overturned != resting)
+        {
+            resting = overturned;
+            ApplyShape(overturned);
+        }
+        if (overturned)
+        {
+            suspension.trackSpeedL = suspension.trackSpeedR = 0f;
+            return;
+        }
+
         float dt = Time.fixedDeltaTime;
         float throttle = input.Throttle;
         float steer = input.Steer;

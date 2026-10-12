@@ -49,9 +49,8 @@ public class GunStats
 
     // Особенности снарядов
     public float splashRadius;       // > 0: взрыв, урон всем в радиусе
-    public float selfDamageFactor;   // доля урона взрыва, которую получает сам стрелок
-    public int bounces;              // отскоки от стен
-    public float maxBounceAngle = 65f;   // отскок, только если снаряд идёт к стене под углом не круче этого
+    public float selfDamageFactor;   // доля урона по себе: взрыв Грома в упор, свой отскочивший снаряд Рикошета
+    public int bounces;              // отскоки от любых поверхностей (стены, земля, наклонные плиты)
     public bool pierce;              // луч проходит сквозь танки
 
     // Потоковые пушки (Cone/Beam)
@@ -80,6 +79,7 @@ public class GunStats
     public int heatColor;
     public float muzzleSmoke;        // дым из дула при выстреле (ParticleFx.MuzzleSmoke): 0 — нет; Смоки (мелкий калибр) 0,45, Гром 1,7
     public float muzzleFlash;        // размер дульной вспышки (ParticleFx.MuzzleFlash), 0 — нет (струйные)
+    public float smokeOpacity = 1f;  // непрозрачность дыма выстрела и разрыва: у Грома 0,4 — при частой стрельбе дым не закрывает цель
 
     // Цвет вспышек выстрела и попадания: у пороховых (с дымом) — огонь, у остальных — цвет снаряда/луча
     public Color FlashColor
@@ -87,7 +87,8 @@ public class GunStats
         get { return muzzleSmoke > 0f ? new Color(1f, 0.72f, 0.38f) : projectileColor; }
     }
 
-    // Звуки (имена файлов в Resources/Sounds)
+    // Звуки (имена файлов в Resources/Sounds). Звук попадания у каждой пушки свой — <пушка>_hit; чужие не берутся
+    // (файла нет — попадание без звука, SoundLibrary один раз предупредит в консоли)
     public string shotSound, hitSound, loopSound;
     public float hitPitch = 1f;
 
@@ -216,7 +217,7 @@ public class GunStats
                     critChance = 0.05f, critImpactMultiplier = 2f,
                     recoil = 350f, recoilStagger = 0.04f, impact = 900f,
                     aimCone = 3f, aimUp = 10f, aimDown = 8f,
-                    shotSound = "twins_shot", hitSound = "ricochet_hit", hitPitch = 1.4f,
+                    shotSound = "twins_shot", hitSound = "twins_hit",
                     barrelLength = 1.8f, barrelThickness = 0.3f,
                     projectileSize = 0.22f, projectileColor = new Color(0.4f, 1f, 0.5f)
                 };
@@ -224,9 +225,9 @@ public class GunStats
                 return new GunStats
                 {
                     name = "Рикошет", className = "Средняя дальность", kind = GunKind.Projectile,
-                    description = "Очередь плазмоидов, отскакивающих от стен (до 3 раз, если угол удара невелик). Небольшая отдача накапливается и раскачивает корпус.",
+                    description = "Очередь плазмоидов, отскакивающих от любых поверхностей (до 3 раз). Отскочивший снаряд может задеть и вас. Небольшая отдача накапливается и раскачивает корпус.",
                     damageMin = At(new float[] { 16f, 21f, 28f, 38f }, i), damageMax = At(new float[] { 20f, 25f, 33f, 44f }, i),
-                    reloadTime = 0.4f, projectileSpeed = 50f, range = 50f, turretSpeed = 110f, bounces = 3, maxBounceAngle = 65f,
+                    reloadTime = 0.4f, projectileSpeed = 50f, range = 50f, turretSpeed = 110f, bounces = 3, selfDamageFactor = 1f,
                     dentScale = 0.7f, markSize = 0.8f, sootAmount = 0.5f, bareAmount = 0.9f, muzzleFlash = 0.6f,
                     critChance = 0.05f, critImpactMultiplier = 2f,
                     recoil = 1300f, recoilStagger = 0.14f, impact = 1200f,
@@ -245,6 +246,7 @@ public class GunStats
                     falloffStart = 25f, falloffEnd = 60f, minDamageFactor = 0.3f,
                     splashRadius = 4f, selfDamageFactor = 0.5f,
                     dentScale = 1.2f, markSize = 1.3f, sootAmount = 1.1f, bareAmount = 0.8f, heatMark = 1.5f, muzzleSmoke = 1.7f, muzzleFlash = 1.5f,
+                    smokeOpacity = 0.4f,
                     critChance = 0.08f, critDamage = At(new float[] { 43f, 55f, 70f, 92f }, i) * 1.4f, critImpactMultiplier = 1.5f,
                     recoil = 4200f, recoilStagger = 0.24f, impact = 5000f,
                     aimCone = 3f, aimUp = 10f, aimDown = 8f,
@@ -263,7 +265,7 @@ public class GunStats
                     critChance = 0.05f, critDamage = At(new float[] { 85f, 110f, 145f, 190f }, i) * 1.3f, critImpactMultiplier = 1.5f,
                     recoil = 11000f, recoilStagger = 0.5f, impact = 8000f,
                     aimCone = 2.5f, aimUp = 8f, aimDown = 6f,
-                    shotSound = "railgun_shot",
+                    shotSound = "railgun_shot", hitSound = "railgun_hit",
                     barrelLength = 4.0f, barrelThickness = 0.18f,
                     projectileColor = new Color(0.4f, 0.8f, 1f)
                 };

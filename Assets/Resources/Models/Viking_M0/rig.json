@@ -47,12 +47,12 @@
  "topRollers": [0.766, 0.325, -0.15, -0.71],
  "topRunY": 0.15,
  "hullBottomY": -0.2886,
- "hullTopY": 0.43,
+ "hullTopY": 0.355,
  "hullHalfWidth": 0.933,
  "hullHalfLength": 1.55,
  "turretMount": {
   "x": 0.0,
-  "y": 0.4301,
+  "y": 0.355,
   "z": -0.1136
  },
  "wheelMidX": {

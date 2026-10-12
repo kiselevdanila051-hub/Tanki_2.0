@@ -79,6 +79,13 @@ public static class Fx
         st.Push(g);
     }
 
+    // Выход из боя: выключенные примитивы из пула уничтожаются
+    public static void ClearPool()
+    {
+        foreach (Stack<GameObject> st in pool.Values)
+            while (st.Count > 0) { GameObject g = st.Pop(); if (g != null) Object.Destroy(g); }
+    }
+
     // Поведение на объекте из пула: включается (повторно используется тот же компонент)
     public static T Behaviour<T>(GameObject g) where T : MonoBehaviour
     {

@@ -3,7 +3,8 @@ using UnityEngine;
 
 // Обломок: летит по физике, через несколько секунд уменьшается и исчезает.
 // Обломки лежат на слое Ignore Raycast — выстрелы, автонаводка и подвеска их не замечают.
-// Мелкие осколки (Bits) — из пула: по окончании жизни возвращаются в пул, а не уничтожаются.
+// Мелкие осколки (Bits) — из пула: по окончании жизни возвращаются в пул (выключенными, под узлом «Debris Pool»), но
+// в запасе держится не больше PoolKeep — лишние уничтожаются; при выходе из боя уничтожается всё (DebrisSpawner.Clear).
 public class Debris : MonoBehaviour
 {
     public const int MaxCount = 220;       // больше — самые старые убираются
@@ -64,6 +65,16 @@ public class Debris : MonoBehaviour
         else Destroy(gameObject);
     }
 
+    // Все летящие и лежащие обломки боя — уничтожить (выход из боя)
+    public static void DestroyAll()
+    {
+        Debris[] list = new Debris[all.Count];
+        all.CopyTo(list, 0);
+        all.Clear();
+        foreach (Debris d in list)
+            if (d != null) { d.node = null; Destroy(d.gameObject); }
+    }
+
     void OnDestroy()
     {
         if (node != null && node.List != null) all.Remove(node);
@@ -81,8 +92,10 @@ public static class DebrisSpawner
     static Material baseMat;
     static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     static readonly Stack<Debris> bitPool = new Stack<Debris>();
+    static Transform poolRoot;
     static Mesh[] shards;
     const int ShardCount = 14;
+    const int PoolKeep = 32;               // выключенных осколков в запасе (на один-два попадания), лишние уничтожаются
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetCache()
@@ -90,14 +103,29 @@ public static class DebrisSpawner
         mats.Clear();
         baseMat = null;
         bitPool.Clear();
+        poolRoot = null;
         shards = null;
     }
 
     public static void ReleaseBit(Debris d)
     {
         if (d == null) return;
+        if (bitPool.Count >= PoolKeep) { Object.Destroy(d.gameObject); return; }
         d.gameObject.SetActive(false);
+        if (poolRoot == null) poolRoot = new GameObject("Debris Pool").transform;
+        d.transform.SetParent(poolRoot, false);
         bitPool.Push(d);
+    }
+
+    // Выход из боя: обломки и запас осколков уничтожаются — в памяти остаются только общие меши осколков
+    public static void Clear()
+    {
+        Debris.DestroyAll();
+        while (bitPool.Count > 0)
+        {
+            Debris d = bitPool.Pop();
+            if (d != null) Object.Destroy(d.gameObject);
+        }
     }
 
     static Debris RentBit()
@@ -105,7 +133,7 @@ public static class DebrisSpawner
         while (bitPool.Count > 0)
         {
             Debris d = bitPool.Pop();
-            if (d != null) { d.gameObject.SetActive(true); return d; }
+            if (d != null) { d.transform.SetParent(null, false); d.gameObject.SetActive(true); return d; }
         }
         GameObject go = new GameObject("Bit");
         go.layer = 2;

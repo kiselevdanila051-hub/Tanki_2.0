@@ -22,16 +22,18 @@ public partial class TankDamage : MonoBehaviour
     public float dustStrength = 1f;   // пыль к низу корпуса
     public bool dirtOn = false;       // грязь и пыль пока выключены; ползунок в гараже скрыт
 
-    // Износ по модификациям М0..М3: ранние — старые потрёпанные машины, М2 и М3 — почти чистые
-    public float[] weatherByMk = { 1f, 0.85f, 0.3f, 0.12f };
+    // Износ по модификациям М0..М3 (множитель к ползунку гаража): М0 — старые потрёпанные машины, М3 — почти чистые;
+    // у М2 полный (было 0,3 — ползунок на М2 почти не действовал, пользователь: «износ не работает»)
+    public float[] weatherByMk = { 1f, 0.85f, 1f, 0.12f };
 
     // Заводской цвет корпусов и башен-моделей (color из rig.json и info.json перекрывается; ствол остаётся тёмным)
     public Color hullColor = new Color(0.58f, 0.545f, 0.475f);
 
-    // Вставки (метка из Tools/HullTool Inlay) по модификации: М0 — тёмный металл, М1 — сталь, М2 — светлый металл, М3 — карбон
+    // Вставки (метка из Tools/HullTool Inlay) по модификации: М0 — тёмный металл, М1 — сталь, М2 — вороная сталь
+    // с бликом (как в превью Blender; светлый «хром» делал М2 игрушечным), М3 — карбон
     public Color inlayDarkMetal = new Color(0.13f, 0.135f, 0.145f);
     public Color inlayMidMetal = new Color(0.37f, 0.38f, 0.40f);
-    public Color inlayLightMetal = new Color(0.72f, 0.73f, 0.75f);
+    public Color inlayGunMetal = new Color(0.27f, 0.28f, 0.30f);
 
     // Разрушение по деталям — у модификаций до этой включительно
     public int destructibleMaxMk = 1;
@@ -170,7 +172,8 @@ public partial class TankDamage : MonoBehaviour
             if (barrel) p.dentFactor = 0.45f;
             parts.Add(p);
             // Следы попаданий (шейдер) — у всех; вмятины и отрыв деталей — у разрушаемых модификаций
-            bool destructible = builder != null && (hull ? builder.hullMk : builder.gunMk) <= destructibleMaxMk;
+            bool destructible = builder != null && ((hull ? builder.hullMk : builder.gunMk) <= destructibleMaxMk ||
+                                                    (hull ? HullDestructible(builder) : GunDestructible(builder)));
             // ось погона в координатах меша: у корпуса — turretMount (rig.json, до modelScale), у башни — начало координат
             Vector2 ring = Vector2.zero;
             HullModel hm = hull && destructible ? ModelLibrary.GetHull(builder.hullType, builder.hullMk) : null;
@@ -214,9 +217,23 @@ public partial class TankDamage : MonoBehaviour
         bool carbon = mk >= 3;
         m.SetFloat("_Carbon", carbon ? 1f : 0f);
         if (carbon) return;
-        m.SetColor("_MetalColor", mk <= 0 ? inlayDarkMetal : mk == 1 ? inlayMidMetal : inlayLightMetal);
-        m.SetFloat("_MetalMetallic", mk <= 0 ? 0.8f : mk == 1 ? 0.82f : 0.88f);
-        m.SetFloat("_MetalSmooth", mk <= 0 ? 0.38f : mk == 1 ? 0.46f : 0.6f);
+        m.SetColor("_MetalColor", mk <= 0 ? inlayDarkMetal : mk == 1 ? inlayMidMetal : inlayGunMetal);
+        m.SetFloat("_MetalMetallic", mk <= 0 ? 0.8f : mk == 1 ? 0.82f : 0.65f);
+        m.SetFloat("_MetalSmooth", mk <= 0 ? 0.38f : mk == 1 ? 0.46f : 0.5f);
+    }
+
+    // Корпус старше destructibleMaxMk, но собранный под разрушение (rig.json: "destructible": true — Хорнет М2)
+    static bool HullDestructible(TankBuilder builder)
+    {
+        HullModel hm = ModelLibrary.GetHull(builder.hullType, builder.hullMk);
+        return hm != null && hm.rig != null && hm.rig.destructible;
+    }
+
+    // Пушка старше destructibleMaxMk, собранная под разрушение (info.json: "destructible": true — пушки М2)
+    static bool GunDestructible(TankBuilder builder)
+    {
+        GunModel gm = ModelLibrary.GetGun(builder.gunType, builder.gunMk);
+        return gm != null && gm.info != null && gm.info.destructible;
     }
 
     static float ByMk(float[] table, int mk)
@@ -325,8 +342,15 @@ public partial class TankDamage : MonoBehaviour
         if (gun != null && gun.dentScale <= 0f) return;
         if (frac < 0.003f && impulse < 300f) return;
         float e = Mathf.Clamp01(Mathf.Max(frac / strongHit, impulse / 10000f));
-        ParticleFx.HitSparks(point, -dir, e > 0.5f);
-        if (!splash && e > 0.3f) SpawnBits(point, -dir, e > 0.7f ? Random.Range(4, 7) : Random.Range(2, 4), 4f, false);
+        bool plasma = IsPlasma(gun);
+        ParticleFx.HitSparks(point, -dir, e > 0.5f, !plasma);
+        if (!splash && !plasma && e > 0.3f) SpawnBits(point, -dir, e > 0.7f ? Random.Range(4, 7) : Random.Range(2, 4), 4f, false);
+    }
+
+    // Плазма (Твинс, Рикошет): попадание по броне — без дыма, пыли и отколотых кусков, только плазма и искры
+    static bool IsPlasma(GunStats gun)
+    {
+        return gun != null && gun.kind == GunKind.Projectile;
     }
 
     // Оторвать все уцелевшие детали (для стенда на полигоне)

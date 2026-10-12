@@ -539,7 +539,7 @@ public class TrackVisuals : MonoBehaviour
         {
             RenderParams rp = new RenderParams(linkMat)
             {
-                shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On,
+                shadowCastingMode = LinkShadows(),
                 receiveShadows = true,
                 layer = model.gameObject.layer,
                 worldBounds = new Bounds(model.position, Vector3.one * 10f)
@@ -635,12 +635,24 @@ public class TrackVisuals : MonoBehaviour
         for (int i = 0; i < c; i++) linkMatrices[i] = w * frozenLinks[i];
         RenderParams rp = new RenderParams(linkMat)
         {
-            shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On,
+            shadowCastingMode = LinkShadows(),
             receiveShadows = true,
             layer = model.gameObject.layer,
             worldBounds = new Bounds(model.position, Vector3.one * 10f)
         };
         if (!RingTest.NoTracks) Graphics.RenderMeshInstanced(rp, set.link, 0, linkMatrices, c);
+    }
+
+    // Траки танка дальше LinkShadowDistance от камеры тень не отбрасывают: на таком расстоянии их тень — несколько пикселей
+    // под тенью корпуса, а проходы теней — главная нагрузка кадра (траки ~140 тыс. треугольников на танк × каскады теней)
+    const float LinkShadowDistance = 35f;
+
+    UnityEngine.Rendering.ShadowCastingMode LinkShadows()
+    {
+        Camera cam = Camera.main;
+        if (cam == null || (cam.transform.position - model.position).sqrMagnitude < LinkShadowDistance * LinkShadowDistance)
+            return UnityEngine.Rendering.ShadowCastingMode.On;
+        return UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
     int FillControlPoints(int side)

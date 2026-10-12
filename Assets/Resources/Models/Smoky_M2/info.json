@@ -1,22 +1,29 @@
 {
- "modelName": "Smoky_M2",
- "scale": 0.0010833604572336433,
- "height": 0.3814,
- "gunPivot": {
-  "x": 0,
-  "y": 0.166,
-  "z": 0.5288
- },
- "muzzle": {
-  "x": 0.0,
-  "y": 0.0,
-  "z": 0.9403
- },
- "color": [
-  0.42,
-  0.47,
-  0.3
- ],
- "smoothness": 0.25,
- "metallic": 0.15
+    "modelName":  "Smoky_M2",
+    "scale":  0.0010833604572336433,
+    "height":  0.439,
+    "gunPivot":  {
+                     "x":  0.0,
+                     "y":  0.166,
+                     "z":  0.5288
+                 },
+    "muzzle":  {
+                   "x":  0.0,
+                   "y":  0.0,
+                   "z":  0.9402
+               },
+    "color":  [
+                  0.42,
+                  0.47,
+                  0.3
+              ],
+    "smoothness":  0.25,
+    "metallic":  0.15,
+    "laser":  {
+                  "x":  0.0,
+                  "y":  -0.082,
+                  "z":  0.5392
+              },
+    "laserOnBarrel":  true,
+    "destructible":  true
 }

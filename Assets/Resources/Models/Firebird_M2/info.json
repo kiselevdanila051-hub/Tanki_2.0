@@ -1,22 +1,23 @@
 {
- "modelName": "Firebird_M2",
- "scale": 0.0012869406564504082,
- "height": 0.5083,
- "gunPivot": {
-  "x": 0,
-  "y": 0.1535,
-  "z": 0.8337
- },
- "muzzle": {
-  "x": 0.0,
-  "y": 0.0,
-  "z": 0.7209
- },
- "color": [
-  0.42,
-  0.47,
-  0.3
- ],
- "smoothness": 0.25,
- "metallic": 0.15
+    "modelName":  "Firebird_M2",
+    "scale":  0.0012869406564504082,
+    "height":  0.546,
+    "gunPivot":  {
+                     "x":  0.0,
+                     "y":  0.1535,
+                     "z":  0.8337
+                 },
+    "muzzle":  {
+                   "x":  0.0,
+                   "y":  0.0,
+                   "z":  0.7209
+               },
+    "color":  [
+                  0.42,
+                  0.47,
+                  0.3
+              ],
+    "smoothness":  0.25,
+    "metallic":  0.15,
+    "destructible":  true
 }

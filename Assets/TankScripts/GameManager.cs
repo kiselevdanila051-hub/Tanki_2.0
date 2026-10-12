@@ -158,6 +158,10 @@ public class GameManager : MonoBehaviour
         playerSelfDestruct = null;
         playerSight = null;
         UiOpen = false;
+        // Обломки, осколки и выключенные объекты пулов эффектов боя не держим в памяти между боями
+        DebrisSpawner.Clear();
+        ShotFx.Clear();
+        Fx.ClearPool();
     }
 
     // ---------- Бой ----------

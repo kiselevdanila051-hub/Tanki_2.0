@@ -19,10 +19,12 @@ public static class SoundLibrary
         if (string.IsNullOrEmpty(key)) return null;
         AudioClip c;
         if (clips.TryGetValue(key, out c) && c != null) return c;
+        if (missing.Contains(key)) return null;               // отсутствующий файл не ищем заново при каждом звуке
         c = Resources.Load<AudioClip>("Sounds/" + key);
         if (c == null)
         {
-            if (missing.Add(key)) Debug.LogWarning("[Звук] Не найден файл Assets/Resources/Sounds/" + key);
+            missing.Add(key);
+            Debug.LogWarning("[Звук] Не найден файл Assets/Resources/Sounds/" + key);
             return null;
         }
         clips[key] = c;

@@ -1,23 +1,24 @@
 {
- "modelName": "Isida_M2",
- "scale": 0.0007617820932147337,
- "height": 0.4373,
- "gunPivot": {
-  "x": 0,
-  "y": 0.1811,
-  "z": 0.5804
- },
- "muzzle": {
-  "x": 0.0,
-  "y": 0.0,
-  "z": 0.2526
- },
- "muzzleSide": 0.1449,
- "color": [
-  0.42,
-  0.47,
-  0.3
- ],
- "smoothness": 0.25,
- "metallic": 0.15
+    "modelName":  "Isida_M2",
+    "scale":  0.0007617820932147337,
+    "height":  0.5037,
+    "gunPivot":  {
+                     "x":  0.0,
+                     "y":  0.1811,
+                     "z":  0.5804
+                 },
+    "muzzle":  {
+                   "x":  0.0,
+                   "y":  0.0,
+                   "z":  0.25259999999999994
+               },
+    "muzzleSide":  0.1449,
+    "color":  [
+                  0.42,
+                  0.47,
+                  0.3
+              ],
+    "smoothness":  0.25,
+    "metallic":  0.15,
+    "destructible":  true
 }

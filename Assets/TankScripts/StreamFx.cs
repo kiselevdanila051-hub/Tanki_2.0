@@ -21,6 +21,7 @@ public class StreamFx : MonoBehaviour
     float lightBase;
     LineRenderer[] strands;
     GameObject orb, ball;
+    MeshRenderer orbRend, ballRend;
     Vector3[] pts = new Vector3[Points];
     Vector3 end;
     Health target;
@@ -83,6 +84,8 @@ public class StreamFx : MonoBehaviour
             ball = ShotFx.PlasmaBall("Isida Contact", color);
             ball.transform.SetParent(transform, false);
             ball.SetActive(false);
+            orbRend = orb.GetComponent<MeshRenderer>();
+            ballRend = ball.GetComponent<MeshRenderer>();
             lt = MakeLight(color, 5f);
             lightBase = 2.5f;
         }
@@ -147,7 +150,7 @@ public class StreamFx : MonoBehaviour
         Vector3 a = transform.position;
         orb.transform.position = a;
         orb.transform.localScale = Vector3.one * Mathf.Lerp(0.05f, 0.3f, Mathf.Clamp01(age / OrbTime)) * pulse;
-        orb.GetComponent<MeshRenderer>().sharedMaterial = pm;
+        orbRend.sharedMaterial = pm;
 
         float reach = Mathf.Clamp01((age - OrbTime) / ShootTime);       // дуга вылетает из шара
         if (reach <= 0f)
@@ -201,7 +204,7 @@ public class StreamFx : MonoBehaviour
         // шар касания катится по броне (точку водит TankShooter)
         ball.transform.position = end - f * 0.08f;
         ball.transform.localScale = Vector3.one * 0.26f * pulse;
-        ball.GetComponent<MeshRenderer>().sharedMaterial = pm;
+        ballRend.sharedMaterial = pm;
         ParticleFx.BeamContact(end - f * 0.15f, -f, c);
         if (time >= nextSpark)
         {

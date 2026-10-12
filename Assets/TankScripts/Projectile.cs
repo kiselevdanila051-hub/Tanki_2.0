@@ -2,7 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // Летящий снаряд (Твинс, Рикошет). Столкновения проверяем лучом на каждом шаге.
-// Своих пролетает насквозь. Рикошет отскакивает от стен, если угол удара невелик.
+// Своих пролетает насквозь. Рикошет отскакивает от любых поверхностей (стены, земля, наклонные плиты) под любым углом,
+// пока не кончатся отскоки; отскочивший снаряд может задеть и свой танк (урон × GunStats.selfDamageFactor).
 // Объект снаряда — плазмоид из пула ShotFx (шар плазмы, хвост, свет): по окончании полёта шар и свет гаснут сразу, хвост
 // дотаивает, затем объект возвращается в пул (ShotFx.ReleaseBolt), а не уничтожается.
 public class Projectile : MonoBehaviour
@@ -20,6 +21,7 @@ public class Projectile : MonoBehaviour
     Renderer core;
     Light glow;
     bool dying;
+    bool bounced;                                   // после отскока снаряд опасен и для своего танка
     float dieAt;
 
     public void Init(Vector3 dir, GunStats g, int team, Health ownerHealth, Rigidbody rb, float damageMultiplier)
@@ -36,6 +38,7 @@ public class Projectile : MonoBehaviour
         travelled = 0f;
         alreadyHit.Clear();
         dying = false;
+        bounced = false;
         if (trail == null) trail = GetComponent<TrailRenderer>();
         if (core == null) core = GetComponent<MeshRenderer>();
         if (glow == null) glow = GetComponent<Light>();
@@ -75,6 +78,7 @@ public class Projectile : MonoBehaviour
                     bool crit = gun.critChance > 0f && Random.value < gun.critChance;
                     float dist = travelled + hit.distance;
                     float dmg = (crit ? gun.critDamage : Random.Range(gun.damageMin, gun.damageMax) * gun.Falloff(dist)) * dmgMul;
+                    if (h == owner) dmg *= gun.selfDamageFactor;              // свой отскочивший снаряд
                     float imp = gun.impact * (crit ? gun.critImpactMultiplier : 1f);
                     Combat.Hit(h, dmg, crit, hit.point, direction, imp, gun, false, owner);
                     if (crit) ParticleFx.ImpactFlash(hit.point, hit.normal, Fx.CritColor, 1.2f);
@@ -87,14 +91,13 @@ public class Projectile : MonoBehaviour
                 return;
             }
 
-            // Стена или земля
-            bool wall = Mathf.Abs(hit.normal.y) < 0.7f;
-            float grazing = 90f - Vector3.Angle(-direction, hit.normal);   // угол между траекторией и поверхностью
-            if (bouncesLeft > 0 && wall && grazing <= gun.maxBounceAngle)
+            // Стена, земля, наклонная плита: пока есть отскоки — отражение от поверхности под любым углом
+            if (bouncesLeft > 0)
             {
                 direction = Vector3.Reflect(direction, hit.normal).normalized;
                 transform.position = hit.point + hit.normal * 0.05f;
                 bouncesLeft--;
+                bounced = true;
                 remainingRange -= hit.distance;
                 travelled += hit.distance;
                 Sfx.PlayAt("ricochet_bounce", hit.point, 0.6f);
@@ -121,19 +124,20 @@ public class Projectile : MonoBehaviour
         if (remainingRange <= 0f) Finish();
     }
 
-    // Ближайшее попадание, кроме своего танка, союзников и уже поражённых целей
+    // Ближайшее попадание, кроме союзников и уже поражённых целей; свой танк — только после отскока
     bool FirstHit(float dist, out RaycastHit best)
     {
         best = new RaycastHit();
         int count = Physics.RaycastNonAlloc(transform.position, direction, hits, dist, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         float nearest = float.MaxValue;
         bool found = false;
+        bool canHitOwner = bounced && gun.selfDamageFactor > 0f;
         for (int i = 0; i < count; i++)
         {
             RaycastHit h = hits[i];
-            if (ownerRb != null && h.rigidbody == ownerRb) continue;
             Health hh = h.collider.GetComponentInParent<Health>();
-            if (hh != null && (hh == owner || (hh.team == ownerTeam && ownerTeam != 0) || alreadyHit.Contains(hh))) continue;
+            bool own = (ownerRb != null && h.rigidbody == ownerRb) || (hh != null && hh == owner);
+            if (own ? !canHitOwner : hh != null && ((hh.team == ownerTeam && ownerTeam != 0) || alreadyHit.Contains(hh))) continue;
             if (h.distance < nearest)
             {
                 nearest = h.distance;

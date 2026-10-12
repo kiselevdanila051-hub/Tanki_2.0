@@ -52,7 +52,20 @@ public class TankShooter : MonoBehaviour
     float barrelPitch;
 
     readonly HashSet<Health> damaged = new HashSet<Health>();
-    readonly List<Health> streamTargets = new List<Health>();
+    readonly List<Health> streamTargets = new List<Health>();   // враги в струе (пересчёт — ScanCone)
+    readonly List<Health> coneAllies = new List<Health>();      // союзники в струе: их не жжём, а размораживаем/остужаем
+    float nextConeScan;
+    // Веер лучей струи внутри конуса (доли тангенса полуугла): центр, внутреннее кольцо из 6, наружное из 8
+    static readonly Vector2[] Fan =
+    {
+        new Vector2(0f, 0f),
+        new Vector2(0.55f, 0f), new Vector2(0.275f, 0.476f), new Vector2(-0.275f, 0.476f),
+        new Vector2(-0.55f, 0f), new Vector2(-0.275f, -0.476f), new Vector2(0.275f, -0.476f),
+        new Vector2(0.924f, 0.383f), new Vector2(0.383f, 0.924f), new Vector2(-0.383f, 0.924f), new Vector2(-0.924f, 0.383f),
+        new Vector2(-0.924f, -0.383f), new Vector2(-0.383f, -0.924f), new Vector2(0.383f, -0.924f), new Vector2(0.924f, -0.383f)
+    };
+    // Изида: поле захвата в упор — прямоугольник перед стволом (ширина и высота — примерно корпус танка)
+    const float GrabBoxLength = 4f, GrabBoxWidth = 2.6f, GrabBoxHeight = 1.8f;
     static readonly RaycastHit[] rayHits = new RaycastHit[32];
     static readonly Collider[] overlap = new Collider[128];               // без выделения памяти на каждый кадр струи
     static readonly HashSet<Health> splashSeen = new HashSet<Health>();
@@ -94,9 +107,7 @@ public class TankShooter : MonoBehaviour
         if (ownHealth == null) ownHealth = GetComponent<Health>();
         if (ownHealth != null && ownHealth.Current <= 0f)
         {
-            IsStreaming = false;
-            SetBeamVisible(false);
-            if (scopeLaser != null) scopeLaser.enabled = false;
+            StopFiring();
             return;
         }
 
@@ -115,6 +126,28 @@ public class TankShooter : MonoBehaviour
             case GunKind.Sniper: UpdateSniper(); UpdateScopeLaser(); break;
         }
         input.Scoping = IsScoping;
+    }
+
+    // Танк уничтожен (TankDamage выключает этот компонент) — струя, дуга, зарядка и луч прицела гаснут сразу.
+    // Раньше Update выключенного компонента больше не вызывался, и «атака» уничтоженного танка оставалась включённой
+    void OnDisable()
+    {
+        StopFiring();
+    }
+
+    void StopFiring()
+    {
+        IsStreaming = false;
+        IsScoping = false;
+        Charge01 = 0f;
+        holdTime = 0f;
+        winding = false;
+        beamLock = null;
+        streamTargets.Clear();
+        coneAllies.Clear();
+        if (stream != null) stream.SetOn(false);
+        if (scopeLaser != null) scopeLaser.enabled = false;
+        if (input != null) input.Scoping = false;
     }
 
     // Ствол плавно поднимается/опускается к цели. При ручной наводке работает стабилизатор, как на настоящих танках:
@@ -250,7 +283,7 @@ public class TankShooter : MonoBehaviour
             muzzle.localPosition = lp;
         }
         ParticleFx.MuzzleFlash(muzzle.position, muzzle.forward, gun.FlashColor, gun.muzzleFlash, gun.muzzleSmoke > 0f);   // пороховые — с «усами» дульного тормоза
-        if (gun.muzzleSmoke > 0f) ParticleFx.MuzzleSmoke(muzzle.position, muzzle.forward, gun.muzzleSmoke, rb);   // Смоки, Гром
+        if (gun.muzzleSmoke > 0f) ParticleFx.MuzzleSmoke(muzzle.position, muzzle.forward, gun.muzzleSmoke, rb, gun.smokeOpacity);   // Смоки, Гром
         Vector3 dir;
         if (hitscan)
         {
@@ -356,7 +389,8 @@ public class TankShooter : MonoBehaviour
             // Вспышка попадания; по стене и земле — ещё искры и пыль (по танку искры даёт TankDamage)
             float size = 0.5f + 0.4f * gun.muzzleFlash;
             bool airEnd = gun.pierce && primary != null && hitTank;
-            if (!airEnd) ParticleFx.ImpactFlash(end, endNormal, gun.FlashColor, size, true, gun.muzzleSmoke > 0f);   // пороховой — с огнём
+            // пороховой — с огнём; у Грома клуб разрыва рисует только взрыв (Explode), а не два клуба в одной точке
+            if (!airEnd) ParticleFx.ImpactFlash(end, endNormal, gun.FlashColor, size, true, gun.muzzleSmoke > 0f, gun.splashRadius > 0f ? 0f : gun.smokeOpacity);
             if (!hitTank)
             {
                 ParticleFx.SurfaceHit(end, endNormal, size);
@@ -414,7 +448,7 @@ public class TankShooter : MonoBehaviour
                 Combat.Hit(h, dmg, false, h.AimCenter, push, gun.impact * 0.6f * f, gun, true, ownHealth);
             }
         }
-        if (!ParticleFx.Explosion(point, gun.splashRadius * 0.15f)) Fx.Explosion(point, gun.splashRadius * 0.6f, new Color(1f, 0.55f, 0.15f));
+        if (!ParticleFx.Explosion(point, gun.splashRadius * 0.15f, gun.smokeOpacity)) Fx.Explosion(point, gun.splashRadius * 0.6f, new Color(1f, 0.55f, 0.15f));
     }
 
     // ---------- Потоковые пушки ----------
@@ -451,43 +485,31 @@ public class TankShooter : MonoBehaviour
         float dt = Time.deltaTime;
         if (gun.kind == GunKind.Beam) { ApplyBeam(origin, fwd, dt); return; }
 
-        int nCols = Physics.OverlapSphereNonAlloc(origin, gun.range + 2f, overlap, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-        streamTargets.Clear();
-        Health nearest = null, nearestAlly = null;
-        float nearestDist = float.MaxValue, nearestAllyDist = float.MaxValue;
-
-        for (int ci = 0; ci < nCols; ci++)
+        // Кого задевает струя — пересчёт 20 раз в секунду (у ботов 10), урон — каждый кадр
+        if (Time.time >= nextConeScan)
         {
-            Collider c = overlap[ci];
-            Health h = c.GetComponentInParent<Health>();
-            if (h == null || h == ownHealth || h.Current <= 0f || streamTargets.Contains(h)) continue;
-
-            // Цель должна быть внутри конуса струи...
-            Vector3 closest = c.bounds.ClosestPoint(origin);
-            Vector3 to = closest - origin;
-            float dist = to.magnitude;
-            if (dist > gun.range) continue;
-            float angle = dist < 0.1f ? 0f : Vector3.Angle(fwd, to);
-            if (angle > gun.coneHalfAngle) continue;
-
-            // ...и не за препятствием (союзники струю не задерживают)
-            if (!AutoAim.Visible(origin, c.bounds.center, h, team, rb)) continue;
-
-            bool ally = h.team == team && team != 0;
-            if (ally)
-            {
-                if (dist < nearestAllyDist) { nearestAllyDist = dist; nearestAlly = h; }
-                continue;
-            }
-            streamTargets.Add(h);
-            if (dist < nearestDist) { nearestDist = dist; nearest = h; }
+            nextConeScan = Time.time + (team == 1 ? 0.05f : 0.1f);
+            ScanCone(origin, fwd);
         }
 
         float dps = gun.damageMax * damageMultiplier;
         float dmg = dps * dt;
 
-        foreach (Health h in streamTargets)
+        // Союзники: Огнемёт размораживает замороженного, Фриз остужает и тушит горящего; урона и своего эффекта нет
+        for (int i = 0; i < coneAllies.Count; i++)
         {
+            Health h = coneAllies[i];
+            if (h == null || h.Current <= 0f) continue;
+            StatusEffects fx = h.GetComponent<StatusEffects>();
+            if (fx == null) continue;
+            if (gun.burnFraction > 0f) fx.Thaw(dt * 1.6f);
+            if (gun.slowFactor < 1f) fx.Cool(dt * 1.6f);
+        }
+
+        for (int i = 0; i < streamTargets.Count; i++)
+        {
+            Health h = streamTargets[i];
+            if (h == null || h.Current <= 0f) continue;
             StatusEffects fx = h.GetComponent<StatusEffects>();
             if (fx != null)
             {
@@ -518,18 +540,135 @@ public class TankShooter : MonoBehaviour
         }
     }
 
+    // Конус струи Огнемёта и Фриза. Танки струю не задерживают — она проходит сквозь все корпуса на пути (урон всем в конусе),
+    // задерживают только стены и земля. Упёршись в поверхность (стену, землю, наклонную плиту), струя разбивается и отражается:
+    // лучи веером внутри конуса отражаются по нормали поверхности и цепляют тех, кто на отражённом пути и рядом с местом удара, —
+    // так огонь и холод «огибают» препятствие
+    void ScanCone(Vector3 origin, Vector3 fwd)
+    {
+        streamTargets.Clear();
+        coneAllies.Clear();
+
+        // 1) все, чей корпус в конусе и не заслонён стеной (другие танки не заслоняют)
+        int nCols = Physics.OverlapSphereNonAlloc(origin, gun.range + 2f, overlap, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        for (int ci = 0; ci < nCols; ci++)
+        {
+            Collider c = overlap[ci];
+            Health h = c.GetComponentInParent<Health>();
+            if (!StreamCandidate(h)) continue;
+            Bounds b = c.bounds;
+            Vector3 closest = b.ClosestPoint(origin);
+            Vector3 to = closest - origin;
+            float dist = to.magnitude;
+            if (dist > gun.range) continue;
+            float angle = dist < 0.1f ? 0f : Mathf.Min(Vector3.Angle(fwd, to), Vector3.Angle(fwd, b.center - origin));
+            if (angle > gun.coneHalfAngle) continue;
+            if (!StaticClear(origin, closest) && !StaticClear(origin, b.center)) continue;
+            AddStreamTarget(h);
+        }
+
+        // 2) веер лучей: сквозь танки, от стен и земли — отражение и брызги
+        Vector3 side = Vector3.Cross(Vector3.up, fwd);
+        if (side.sqrMagnitude < 1e-4f) side = muzzle.right;
+        side.Normalize();
+        Vector3 up = Vector3.Cross(fwd, side);
+        float spread = Mathf.Tan(gun.coneHalfAngle * Mathf.Deg2Rad);
+        for (int k = 0; k < Fan.Length; k++)
+        {
+            Vector3 d = (fwd + (side * Fan[k].x + up * Fan[k].y) * spread).normalized;
+            SweepStream(origin, d, gun.range, k < 7, 1);
+        }
+    }
+
+    // Луч струи: проходит сквозь танки (задевает всех), у стены или земли разбивается — задевает тех, кто у места удара
+    // (splash), и отражается (bounce раз) на оставшуюся часть дальности
+    void SweepStream(Vector3 from, Vector3 dir, float len, bool splash, int bounce)
+    {
+        int n = Physics.RaycastNonAlloc(from, dir, rayHits, len, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        System.Array.Sort(rayHits, 0, n, hitComparer);
+        bool wall = false;
+        Vector3 p = Vector3.zero, nrm = Vector3.up;
+        float dist = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            RaycastHit h = rayHits[i];
+            if (rb != null && h.rigidbody == rb) continue;
+            Health t = h.collider.GetComponentInParent<Health>();
+            if (t != null)
+            {
+                if (StreamCandidate(t)) AddStreamTarget(t);
+                continue;                                                    // сквозь танк — дальше
+            }
+            wall = true;
+            p = h.point;
+            nrm = h.normal;
+            dist = h.distance;
+            break;
+        }
+        if (!wall) return;
+        float rest = len - dist;
+        if (rest < 0.4f) return;
+        if (splash) SplashAt(p, nrm, Mathf.Clamp(rest * 0.35f, 0.8f, 1.8f));
+        if (bounce > 0) SweepStream(p + nrm * 0.05f, Vector3.Reflect(dir, nrm), rest * 0.6f, false, bounce - 1);
+    }
+
+    // Струя разбилась о поверхность: брызги задевают тех, кто рядом с местом удара (если между ними нет стены)
+    void SplashAt(Vector3 p, Vector3 nrm, float radius)
+    {
+        Vector3 c = p + nrm * 0.3f;
+        int nc = Physics.OverlapSphereNonAlloc(c, radius, overlap, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < nc; i++)
+        {
+            Health h = overlap[i].GetComponentInParent<Health>();
+            if (!StreamCandidate(h)) continue;
+            if (StaticClear(c, overlap[i].bounds.ClosestPoint(c))) AddStreamTarget(h);
+        }
+    }
+
+    bool StreamCandidate(Health h)
+    {
+        return h != null && h != ownHealth && h.Current > 0f && h.isActiveAndEnabled;
+    }
+
+    void AddStreamTarget(Health h)
+    {
+        List<Health> list = h.team == team && team != 0 ? coneAllies : streamTargets;
+        if (!list.Contains(h)) list.Add(h);
+    }
+
+    // Нет ли между точками стены или земли (танки, свой корпус и обломки не мешают)
+    bool StaticClear(Vector3 a, Vector3 b)
+    {
+        Vector3 d = b - a;
+        float len = d.magnitude;
+        if (len < 0.01f) return true;
+        int n = Physics.RaycastNonAlloc(a, d / len, rayHits, len, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < n; i++)
+        {
+            RaycastHit h = rayHits[i];
+            if (rb != null && h.rigidbody == rb) continue;
+            if (h.collider.GetComponentInParent<Health>() != null) continue;
+            return false;
+        }
+        return true;
+    }
+
     // ---------- Изида ----------
     // Дуга цепляется за цель в конусе захвата (шире, чем у струи) и держится за неё, пока та в дальности, в конусе
     // удержания и видна хотя бы краем — без мигания «зацепил/потерял». Враг — урон и половина назад себе, союзник — лечение.
+    // В упор захват по конусу и видимости срывался (центр цели вне конуса, луч видимости начинается внутри её коллайдера),
+    // поэтому перед стволом есть прямоугольное поле захвата: танк (враг или союзник), задевший его, захватывается сразу.
     // Точка касания «катается» по броне цели (плавно бродит по корпусу, в координатах цели — едет вместе с ней)
     void ApplyBeam(Vector3 origin, Vector3 fwd, float dt)
     {
         float dps = gun.damageMax * damageMultiplier;
         float hold = Mathf.Max(gun.coneHalfAngle * 4f, 22f), grab = Mathf.Max(gun.coneHalfAngle * 2.5f, 12f);
-        if (beamLock != null && !BeamValid(beamLock, origin, fwd, hold, gun.range + 1f)) beamLock = null;
+        bool lockInBox;
+        Health inBox = BoxGrab(origin, fwd, beamLock, out lockInBox);
+        if (beamLock != null && !lockInBox && !BeamValid(beamLock, origin, fwd, hold, gun.range + 1f)) beamLock = null;
         if (beamLock == null)
         {
-            beamLock = BeamAcquire(origin, fwd, grab, gun.range);
+            beamLock = inBox != null ? inBox : BeamAcquire(origin, fwd, grab, gun.range);
             if (beamLock != null) contactLocal = beamLock.transform.InverseTransformPoint(SurfacePoint(origin, beamLock));
         }
         if (beamLock == null)
@@ -560,6 +699,35 @@ public class TankShooter : MonoBehaviour
         if (ang > cone) return false;
         return AutoAim.Visible(origin, center, h, team, rb) || AutoAim.Visible(origin, Vector3.Lerp(close, center, 0.2f), h, team, rb)
             || AutoAim.Visible(origin, center + Vector3.up * c.bounds.extents.y * 0.6f, h, team, rb);
+    }
+
+    // Поле захвата в упор: прямоугольник перед стволом (начинается чуть позади оси качания). Возвращает ближайший к оси
+    // ствола живой танк в поле, не отгороженный стеной; keepInside — держит ли поле уже захваченную цель keep
+    Health BoxGrab(Vector3 origin, Vector3 fwd, Health keep, out bool keepInside)
+    {
+        keepInside = false;
+        Transform turretT = gunPivot != null ? gunPivot.parent : muzzle.parent;
+        Quaternion rot = Quaternion.LookRotation(fwd, turretT.up);
+        Vector3 center = origin + fwd * (GrabBoxLength * 0.5f - 0.5f);
+        Vector3 half = new Vector3(GrabBoxWidth, GrabBoxHeight, GrabBoxLength) * 0.5f;
+        int n = Physics.OverlapBoxNonAlloc(center, half, overlap, rot, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        Health best = null;
+        float bestScore = float.MaxValue;
+        for (int i = 0; i < n; i++)
+        {
+            Collider c = overlap[i];
+            Health h = c.GetComponentInParent<Health>();
+            if (!StreamCandidate(h)) continue;
+            Bounds b = c.bounds;
+            Vector3 cp = b.ClosestPoint(origin);
+            if (!StaticClear(origin, cp) && !StaticClear(origin, b.center)) continue;
+            if (h == keep) keepInside = true;
+            Vector3 v = b.center - origin;
+            float along = Vector3.Dot(v, fwd);
+            float score = (v - fwd * along).magnitude + Mathf.Abs(along) * 0.25f;   // ближе к оси ствола, затем ближе к нам
+            if (score < bestScore) { bestScore = score; best = h; }
+        }
+        return best;
     }
 
     Health BeamAcquire(Vector3 origin, Vector3 fwd, float cone, float range)

@@ -46,17 +46,18 @@ public static partial class ParticleFx
         nz.damping = true;
     }
 
-    // Струя бьётся о стены и броню: частицы растекаются по поверхности
-    static void Splash(ParticleSystem ps, float radiusScale)
+    // Струя бьётся о стены, землю и броню (и о наклонные поверхности): частицы разбиваются — часть отражается назад
+    // по нормали поверхности (bounce), остальное растекается вдоль неё, теряя скорость (dampen)
+    static void Splash(ParticleSystem ps, float radiusScale, float bounce = 0.35f, float dampen = 0.4f)
     {
         ParticleSystem.CollisionModule col = ps.collision;
         col.enabled = true;
         col.type = ParticleSystemCollisionType.World;
         col.mode = ParticleSystemCollisionMode.Collision3D;
         col.quality = ParticleSystemCollisionQuality.Medium;
-        col.dampen = 0.75f;
-        col.bounce = 0.05f;
-        col.lifetimeLoss = 0.12f;
+        col.dampen = dampen;
+        col.bounce = bounce;
+        col.lifetimeLoss = 0.05f;
         col.radiusScale = radiusScale;
         col.collidesWith = Physics.DefaultRaycastLayers;
         col.enableDynamicColliders = true;
@@ -116,6 +117,7 @@ public static partial class ParticleFx
             Setup(c, true, 0.1f, 0.16f, 12f, 15f, 0.2f, 0.28f, Color.white, new Color(1f, 0.9f, 0.7f), 0f, 60);
             Fade(c, Grad(Color.white, new Color(1f, 0.7f, 0.35f), 0f), 2.6f);
             Cone(c, 2f, 0.03f);
+            Splash(c, 0.3f);                                                  // в упор ядро бьёт в стену и отскакивает
             Rate(c, 70f);
             list.Add(c);
         }
@@ -130,7 +132,7 @@ public static partial class ParticleFx
             Drag(s, 1.3f);
             Cone(s, 5f, 0.06f);
             Turbulence(s, 0.9f, 0.5f);
-            Splash(s, 0.3f);
+            Splash(s, 0.3f, 0.2f, 0.5f);
             Rate(s, 24f);
             list.Add(s);
         }
@@ -187,7 +189,7 @@ public static partial class ParticleFx
         Drag(v, 1.4f);
         Cone(v, 4f, 0.06f);
         Turbulence(v, 1f, 0.6f);
-        Splash(v, 0.3f);
+        Splash(v, 0.3f, 0.3f, 0.45f);
         Rate(v, 70f);
         list.Add(v);
 
@@ -203,6 +205,7 @@ public static partial class ParticleFx
             Fade(c, Grad(Color.white, new Color(0.6f, 0.8f, 1f), 0f), 2f);
             Drag(c, 1.5f);
             Cone(c, 3f, 0.04f);
+            Splash(c, 0.3f, 0.45f, 0.3f);                                     // струйки азота разбиваются о стену
             Rate(c, 90f);
             list.Add(c);
         }

@@ -87,11 +87,12 @@ public partial class TankDamage
         float soot = gun != null ? gun.sootAmount : 0.6f;
         float bare = gun != null ? gun.bareAmount : 1f;
 
+        bool plasma = IsPlasma(gun);
         Part part;
         Vector3 local, nrm, world;
         if (!FindSurfaceM0(point, dir, out part, out local, out nrm, out world))
         {
-            ParticleFx.HitSparks(point, -dir, e > 0.5f);
+            ParticleFx.HitSparks(point, -dir, e > 0.5f, !plasma);
             return;
         }
 
@@ -106,9 +107,11 @@ public partial class TankDamage
             ? new Vector4(gun.heatMark * (0.55f + 0.45f * e), gun.heatColor, 0.55f + 0.35f * gun.heatMark, 0f) : Vector4.zero;
         AddHit(part, local, nrm, radius * 0.6f / part.scale, Mathf.Min(0.3f + 0.4f * e, 0.8f), soot * (0.5f + 0.5f * e), bare * (0.6f + 0.4f * e), hole, glow);
 
-        ParticleFx.HitSparks(world, -dir, e > 0.5f);
-        if (!splash && e > 0.3f) SpawnBits(world, -dir, e > 0.7f ? Random.Range(4, 7) : Random.Range(2, 4), 4f, false);
+        ParticleFx.HitSparks(world, -dir, e > 0.5f, !plasma);
+        if (!splash && !plasma && e > 0.3f) SpawnBits(world, -dir, e > 0.7f ? Random.Range(4, 7) : Random.Range(2, 4), 4f, false);
+        plasmaHit = plasma;
         PiecesHit(part, local, damage * (splash ? 0.6f : 1f), dir, splash);
+        plasmaHit = false;
     }
 
     void SprayM0(Vector3 point, Vector3 dir, float amount)
@@ -253,6 +256,8 @@ public partial class TankDamage
     }
 
     // ---------- Детали: урон, отгиб, отрыв ----------
+    bool plasmaHit;                       // деталь гнёт или рвёт плазма (Твинс, Рикошет) — без дыма, пыли и осколков
+
     void PiecesHit(Part p, Vector3 local, float damage, Vector3 dir, bool splash)
     {
         if (p.mp == null) return;
@@ -452,9 +457,9 @@ public partial class TankDamage
         p.vDirty = true;
         p.bDirty = true;
 
+        // Звука нет: попадание уже озвучено звуком пушки (раньше здесь играл чужой «ricochet_hit» — звуки разных пушек смешивались)
         Vector3 at = p.tr.TransformPoint(un.anchor);
-        Sfx.PlayAt("ricochet_hit", at, 0.6f, 0.55f);
-        ParticleFx.HitSparks(at, p.tr.TransformDirection(o), false);
+        ParticleFx.HitSparks(at, p.tr.TransformDirection(o), false, !plasmaHit);
         if (showParts) RebuildOutlines();
     }
 
@@ -537,12 +542,14 @@ public partial class TankDamage
         AddHit(p, un.anchor, o, r, 0.5f, 1f, 0.8f, 0f);
         if (burnt) return;
         Vector3 at = p.tr.TransformPoint(un.anchor);
-        ParticleFx.HitSparks(at, outW, true);
-        ParticleFx.HitSparks(at + Random.insideUnitSphere * 0.15f, (outW + Vector3.up).normalized, true);
-        SpawnBits(at, outW, 7, 7f, false, 1.1f);
-        ParticleFx.SmokePuff(at, 4, 1f);
-        Sfx.PlayAt("ricochet_hit", at, 1f, 0.45f);
-        Sfx.PlayAt("smoky_hit", at, 0.8f, 0.7f);
+        ParticleFx.HitSparks(at, outW, true, !plasmaHit);
+        ParticleFx.HitSparks(at + Random.insideUnitSphere * 0.15f, (outW + Vector3.up).normalized, true, !plasmaHit);
+        if (!plasmaHit)
+        {
+            SpawnBits(at, outW, 7, 7f, false, 1.1f);
+            ParticleFx.SmokePuff(at, 4, 1f);
+        }
+        // звука нет: попадание озвучено звуком пушки (раньше здесь играли «ricochet_hit» и «smoky_hit» при любой пушке)
         if (showParts) RebuildOutlines();
     }
 

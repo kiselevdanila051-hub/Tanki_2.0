@@ -177,6 +177,14 @@ public static class ShotFx
         bolts.Push(p);
     }
 
+    // Выход из боя: выключенные плазмоиды, линии и зарядки из пулов уничтожаются (в следующем бою создадутся заново)
+    public static void Clear()
+    {
+        while (bolts.Count > 0) { Projectile p = bolts.Pop(); if (p != null) Object.Destroy(p.gameObject); }
+        while (lines.Count > 0) { FxLine l = lines.Pop(); if (l != null) Object.Destroy(l.gameObject); }
+        while (charges.Count > 0) { RailChargeFx f = charges.Pop(); if (f != null) Object.Destroy(f.gameObject); }
+    }
+
     // ---------- Линии ----------
     static FxLine Line()
     {

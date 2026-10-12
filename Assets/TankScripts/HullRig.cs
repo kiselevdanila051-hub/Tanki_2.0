@@ -24,6 +24,7 @@ public class HullRig
     public float metallic = 0.1f;
     public float modelScale = 1f;     // увеличение модели в игре (0 или нет в файле — 1); меш и разметка не меняются
     public float gunScale = 1f;       // масштаб модели пушки на этом корпусе (лёгким — поменьше; 0 или нет в файле — 1)
+    public bool destructible;         // разрушение по деталям, даже если модификация старше TankDamage.destructibleMaxMk (модель собрана под него)
 
     // Умножить все размеры и положения разметки (для modelScale)
     public void ScaleBy(float k)
@@ -77,6 +78,7 @@ public class GunInfo
     public float muzzleSide;          // два ствола (Твинс): дула на ±muzzleSide по x, выстрелы поочерёдно
     public RigPoint laser;            // излучатель лазерного целеуказателя: от точки крепления башни или (laserOnBarrel) от оси качания
     public bool laserOnBarrel;        // излучатель на ствольной группе — качается вместе со стволом
+    public bool destructible;         // разрушение по деталям, даже если модификация старше TankDamage.destructibleMaxMk (модель собрана под него)
     public float[] color;             // цвет, если у модели нет текстуры
     public float smoothness = 0.3f;
     public float metallic = 0.1f;

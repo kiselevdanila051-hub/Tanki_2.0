@@ -31,6 +31,10 @@ public class TankSuspension : MonoBehaviour
     public float trackSpeedL, trackSpeedR;            // скорость каждой гусеницы вперёд, м/с (задаёт TankController)
     public float GroundedFraction { get; private set; }
     public Vector3 GroundNormal { get; private set; }
+    // Танк лёг на бок или на крышу (наклон больше ~70°): подвеска не работает — иначе её лучи, упёршись сбоку в землю
+    // или стену, толкали лежащий танк. TankController в это время не двигает его
+    public bool Overturned { get; private set; }
+    const float OverturnUp = 0.35f;                   // cos ~70°; обратно на гусеницы — с запасом 0,1 (без дребезга)
 
     public float RestExtension { get { return maxLength * (1f - sagFraction); } }
     // высота центра корпуса над землёй в покое
@@ -103,6 +107,15 @@ public class TankSuspension : MonoBehaviour
         float maxForce = weightShare * 4f;                                    // защита от резких скачков
         Vector3 up = transform.up;
         float rayLength = maxLength + groundRadius;
+
+        Overturned = up.y < (Overturned ? OverturnUp + 0.1f : OverturnUp);
+        if (Overturned)
+        {
+            for (int i = 0; i < total; i++) { extension[i] = RestExtension + maxDroop; load[i] = 0f; }
+            GroundedFraction = 0f;
+            GroundNormal = Vector3.Slerp(GroundNormal, Vector3.up, 0.05f);
+            return;
+        }
 
         int grounded = 0;
         Vector3 normalSum = Vector3.zero;

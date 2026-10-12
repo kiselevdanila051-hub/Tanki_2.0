@@ -359,8 +359,9 @@ public static partial class ParticleFx
         One(HotSpots(), exit, Vector3.zero, 0.18f, 0.5f, Color.white);
     }
 
-    // Ударная волна (Гром, взрывы): кольцо искажения воздуха, кольцо пыли по земле, комья грунта, ожог, тряска камеры
-    public static void Shockwave(Vector3 pos, float scale)
+    // Ударная волна (Гром, взрывы): кольцо искажения воздуха, кольцо пыли по земле, комья грунта, ожог, тряска камеры.
+    // opacity — непрозрачность пыли
+    public static void Shockwave(Vector3 pos, float scale, float opacity = 1f)
     {
         if (RingTest.NoFx) return;
         ParticleSystem sh = ShockHaze();
@@ -380,7 +381,7 @@ public static partial class ParticleFx
                 Vector3 h = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
                 float sz = Random.Range(1.6f, 2.4f) * scale;
                 One(du, ground + h * 0.8f * scale + Vector3.up * 0.3f * sz, h * Random.Range(9f, 14f) * scale + Vector3.up * 0.4f, sz,
-                    Random.Range(2f, 3.2f), Tint(Dust, Random.Range(0.85f, 1.05f), Random.Range(0.4f, 0.55f)));
+                    Random.Range(2f, 3.2f), Tint(Dust, Random.Range(0.85f, 1.05f), Random.Range(0.4f, 0.55f) * opacity));
             }
             ParticleSystem g = Grit();
             int ng = Mathf.RoundToInt(30f * Mathf.Clamp(scale, 0.5f, 1.5f));

@@ -1,22 +1,29 @@
 {
- "modelName": "Shaft_M2",
- "scale": 0.00147175242200468,
- "height": 0.5693,
- "gunPivot": {
-  "x": 0,
-  "y": 0.2668,
-  "z": 0.213
- },
- "muzzle": {
-  "x": 0.0,
-  "y": 0.0,
-  "z": 1.7362
- },
- "color": [
-  0.42,
-  0.47,
-  0.3
- ],
- "smoothness": 0.25,
- "metallic": 0.15
+    "modelName":  "Shaft_M2",
+    "scale":  0.00147175242200468,
+    "height":  0.606,
+    "gunPivot":  {
+                     "x":  0.0,
+                     "y":  0.2668,
+                     "z":  0.213
+                 },
+    "muzzle":  {
+                   "x":  0.0,
+                   "y":  0.0,
+                   "z":  1.7362
+               },
+    "color":  [
+                  0.42,
+                  0.47,
+                  0.3
+              ],
+    "smoothness":  0.25,
+    "metallic":  0.15,
+    "laser":  {
+                  "x":  -0.1525,
+                  "y":  0.0134,
+                  "z":  0.227
+              },
+    "laserOnBarrel":  true,
+    "destructible":  true
 }

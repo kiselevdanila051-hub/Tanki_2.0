@@ -73,6 +73,10 @@ public class TankBuilder : MonoBehaviour
         }
         box.center = new Vector3(0f, (colTop + colBottom) / 2f, 0f);
         controller.RefreshPhysics();
+        // Коробка только по корпусу (без высоты башни) — для перевёрнутого танка (см. TankController.SetShapes ниже)
+        float hullTop = rig != null ? Mathf.Min(rig.hullTopY, mount.y) : bodyTop;
+        Vector3 hullBoxCenter = new Vector3(0f, (hullTop + colBottom) / 2f, 0f);
+        Vector3 hullBoxSize = new Vector3(box.size.x, Mathf.Max(0.1f, hullTop - colBottom), box.size.z);
 
         // Внешний вид: убираем старый и строим новый
         if (model != null) Destroy(model);
@@ -123,11 +127,13 @@ public class TankBuilder : MonoBehaviour
         muzzle.transform.SetParent(pivot.transform, false);
         muzzle.transform.localPosition = muzzlePos;
 
-        // Излучатель лазерного целеуказателя (если он есть на модели башни; JsonUtility отсутствующую точку даёт нулевой)
+        // Излучатель лазерного целеуказателя (если он есть на модели башни; JsonUtility отсутствующую точку даёт нулевой).
+        // Точка в info.json — в координатах файла OBJ, а импорт OBJ в Unity зеркалит ось x: без смены знака излучатель
+        // оказывался с другой стороны ствола, и луч начинался в воздухе (проверено в редакторе: фара у зеркальной точки)
         Transform laser = null;
         if (gm != null && gm.info.laser != null)
         {
-            Vector3 lp = new Vector3(gm.info.laser.x, gm.info.laser.y, gm.info.laser.z);
+            Vector3 lp = new Vector3(-gm.info.laser.x, gm.info.laser.y, gm.info.laser.z);
             if (lp.sqrMagnitude > 1e-6f)
             {
                 laser = new GameObject("LaserEmitter").transform;
@@ -146,6 +152,22 @@ public class TankBuilder : MonoBehaviour
         shooter.gunPivot = pivot.transform;
         shooter.muzzleSide = gm != null ? gm.info.muzzleSide : 0f;
         shooter.laserEmitter = laser;
+
+        // Скруглённая форма башни (капсула вдоль башни по её габаритам) — включается, только когда танк перевёрнут: на плоской
+        // крыше общей коробки (она охватывает и башню) танк лежал ровно, а на башне ему не удержаться — заваливается набок
+        Bounds tb = gm != null && gm.turret != null ? gm.turret.bounds
+                                                    : new Bounds(new Vector3(0f, 0.25f * s, 0f), new Vector3(1.6f * s, 0.5f * s, 1.8f * s));
+        GameObject shape = new GameObject("TurretShape");
+        shape.layer = gameObject.layer;
+        shape.transform.SetParent(turret.transform, false);
+        CapsuleCollider cap = shape.AddComponent<CapsuleCollider>();
+        cap.direction = 2;
+        cap.center = tb.center;
+        cap.radius = Mathf.Max(0.05f, Mathf.Min(tb.extents.x, tb.extents.y) * 0.95f);
+        cap.height = Mathf.Max(tb.size.z, cap.radius * 2f);
+        cap.sharedMaterial = box.sharedMaterial;
+        cap.enabled = false;
+        controller.SetShapes(box.center, box.size, hullBoxCenter, hullBoxSize, cap);
 
         // Катки и гусеницы
         TrackVisuals visuals = GetComponent<TrackVisuals>();

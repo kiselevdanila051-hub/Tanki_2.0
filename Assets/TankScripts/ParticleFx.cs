@@ -764,8 +764,9 @@ public static partial class ParticleFx
     }
 
     // Вспышка попадания у поверхности (чуть выше неё, чтобы не уходила в броню) и отсвет. fire — пороховой снаряд
-    // (Смоки, Гром): разрыв — флипбук взрыва (огненный шар → огонь в дыму → тёмный дым); плазма и Рельса — цветное свечение
-    public static void ImpactFlash(Vector3 point, Vector3 normal, Color color, float size, bool light = true, bool fire = false)
+    // (Смоки, Гром): разрыв — флипбук взрыва (огненный шар → огонь в дыму → тёмный дым); плазма и Рельса — цветное свечение.
+    // smoke — непрозрачность клуба разрыва (0 — без клуба: у Грома его рисует Explosion)
+    public static void ImpactFlash(Vector3 point, Vector3 normal, Color color, float size, bool light = true, bool fire = false, float smoke = 1f)
     {
         if (size <= 0f || RingTest.NoFx) return;
         Vector3 n = normal.sqrMagnitude > 1e-4f ? normal.normalized : Vector3.up;
@@ -773,9 +774,9 @@ public static partial class ParticleFx
         if (fire)
         {
             One(Hot(), p + n * 0.15f * size, n * 2f, 1.1f * size, 0.07f, Color.white);
-            ParticleSystem ib = ImpactBoom();
-            One(ib, p + n * 0.45f * size, n * 1.2f * size + Vector3.up * 0.4f, 2f * size * Random.Range(0.9f, 1.1f), Random.Range(2.2f, 2.8f),
-                new Color(0.9f, 0.9f, 0.9f, 0.95f));
+            if (smoke > 0f)
+                One(ImpactBoom(), p + n * 0.45f * size, n * 1.2f * size + Vector3.up * 0.4f, 2f * size * Random.Range(0.9f, 1.1f), Random.Range(2.2f, 2.8f),
+                    new Color(0.9f, 0.9f, 0.9f, 0.95f * smoke));
         }
         else
         {
@@ -816,8 +817,8 @@ public static partial class ParticleFx
     // Взрыв (гибель танка, сплэш Грома): флипбук настоящего взрыва — раскалённый огненный шар раздувается, огонь тонет в
     // клубах, дальше густой тёмный дым; вокруг — малые взрывы (у большого), вспышка горения и сильный отсвет, искры и
     // падающие угольки, пыль по земле, ударная волна расталкивает висящий дым. После большого — чёрный дым валит вверх.
-    // Возвращает false, если частицы недоступны
-    public static bool Explosion(Vector3 pos, float scale)
+    // Возвращает false, если частицы недоступны. opacity — непрозрачность клубов и пыли (Гром — GunStats.smokeOpacity)
+    public static bool Explosion(Vector3 pos, float scale, float opacity = 1f)
     {
         bool big = scale >= 1f;
         ParticleSystem main = big ? BoomBigSys() : ImpactBoom();
@@ -830,7 +831,8 @@ public static partial class ParticleFx
         One(h, pos + Vector3.up * 0.3f * scale, Vector3.up * 2f, 1.7f * scale, 0.2f, new Color(1f, 0.85f, 0.7f));
         FxLight.Flash(pos + Vector3.up * 0.8f, new Color(1f, 0.6f, 0.3f), 10f * scale, 10f + 8f * scale, big ? 0.9f : 0.5f);
 
-        One(main, pos + Vector3.up * 0.35f * scale, Vector3.up * 0.8f * scale, (big ? 6.5f : 4.6f) * scale, big ? 4.2f : 2.8f, new Color(0.85f, 0.85f, 0.85f, 1f));
+        float lifeK = big ? 1f : Mathf.Lerp(0.6f, 1f, opacity);                    // прозрачный разрыв (Гром) и рассеивается быстрее
+        One(main, pos + Vector3.up * 0.35f * scale, Vector3.up * 0.8f * scale, (big ? 6.5f : 4.6f) * scale, (big ? 4.2f : 2.8f) * lifeK, new Color(0.85f, 0.85f, 0.85f, opacity));
         if (big)
             for (int i = 0; i < 3; i++)                                             // малые взрывы вокруг — боекомплект, баки
             {
@@ -842,7 +844,7 @@ public static partial class ParticleFx
         else
             for (int i = 0; i < 2; i++)                                             // клубы вокруг — облако объёмное, а не картинка
                 One(Puff(), pos + Random.insideUnitSphere * 0.8f * scale + Vector3.up * 0.4f * scale, (Random.onUnitSphere * 0.8f + Vector3.up) * scale,
-                    Random.Range(2.4f, 3f) * scale, Random.Range(2.4f, 3.2f), new Color(0.32f, 0.31f, 0.3f, 0.75f));
+                    Random.Range(2.4f, 3f) * scale, Random.Range(2.4f, 3.2f) * lifeK, new Color(0.32f, 0.31f, 0.3f, 0.75f * opacity));
 
         Emit(bs, Mathf.RoundToInt(40 * k), pos, 0.2f, Vector3.zero, 0f, 8f, 20f * Mathf.Max(0.6f, scale), 0.04f, 0.09f,
              0.35f, 0.9f, new Color(1f, 0.9f, 0.5f), new Color(1f, 0.6f, 0.2f));
@@ -866,11 +868,11 @@ public static partial class ParticleFx
             Vector3 hz = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
             float sz = Random.Range(3.5f, 4.5f) * scale;
             One(du, ground + hz * 0.8f * scale + Vector3.up * 0.3f * sz, hz * Random.Range(1.5f, 3f) * scale, sz,
-                Random.Range(3f, 4.5f), Tint(Dust, 1f, Random.Range(0.5f, 0.6f)));
+                Random.Range(3f, 4.5f) * lifeK, Tint(Dust, 1f, Random.Range(0.5f, 0.6f) * opacity));
         }
         FxPulse.Push(pos, 8f * scale, 5f * scale);                                  // ударная волна по висящему дыму
-        AddHaze(pos + Vector3.up * 1.5f * scale, 3f * scale, 1.5f, 6f);
-        Shockwave(pos, scale);                                                      // кольцо искажения, пыль, комья, ожог, тряска
+        AddHaze(pos + Vector3.up * 1.5f * scale, 3f * scale, 1.5f * opacity, 6f);
+        Shockwave(pos, scale, opacity);                                             // кольцо искажения, пыль, комья, ожог, тряска
         HeatHaze(pos + Vector3.up * 0.8f * scale, 5f * scale, 1.6f, 1f);            // над огнём дрожит воздух
         return true;
     }
@@ -911,8 +913,9 @@ public static partial class ParticleFx
     // настоящего взрыва) вылетают, резко тормозят, за доли секунды догорают в дыму и становятся светлым дымом; между ними
     // проявляются облака — сплошной шлейф конусом (у дула узкий, впереди на 1–1,5 корпуса широкий), по краям клочья;
     // шлейф клубится, поднимается, сносится ветром и тает. Пыль — облаками по земле под шлейфом.
-    // strength — GunStats.muzzleSmoke, ignore — свой танк (не считать землёй)
-    public static void MuzzleSmoke(Vector3 pos, Vector3 dir, float strength, Rigidbody ignore = null)
+    // strength — GunStats.muzzleSmoke, ignore — свой танк (не считать землёй), opacity — непрозрачность шлейфа и пыли
+    // (GunStats.smokeOpacity: у Грома меньше — при частой стрельбе шлейф не закрывает цель)
+    public static void MuzzleSmoke(Vector3 pos, Vector3 dir, float strength, Rigidbody ignore = null, float opacity = 1f)
     {
         if (strength <= 0f || RingTest.NoFx) return;
         ParticleSystem bl = Blast(), cl = CloudSys(), wi = WispSys();
@@ -923,47 +926,49 @@ public static partial class ParticleFx
         Basis(d, out side, out up);
         float s = strength, sq = Mathf.Sqrt(s);
         float len = 3.4f * sq;                                        // длина шлейфа, м (Смоки ≈ 3,4, Гром ≈ 4,4)
+        // прозрачный шлейф (opacity < 1): плотность даёт наложение десятков частиц, поэтому их меньше и они короче живут
+        float nK = Mathf.Lerp(0.4f, 1f, opacity), lK = Mathf.Lerp(0.55f, 1f, opacity);
 
-        int nb = Mathf.Max(2, Mathf.RoundToInt((2f + 1.5f * s) * Mathf.Max(lod, 0.6f)));
+        int nb = Mathf.Max(2, Mathf.RoundToInt((2f + 1.5f * s) * Mathf.Max(lod, 0.6f) * nK));
         for (int i = 0; i < nb; i++)
         {
             float t = (i + Random.Range(0.2f, 0.8f)) / nb;
             Vector3 p = pos + d * (0.35f * sq + t * len * 0.75f) + side * Random.Range(-0.15f, 0.15f) * sq + up * Random.Range(-0.05f, 0.15f) * sq;
             One(bl, p, d * Mathf.Lerp(7f, 2.5f, t) * sq + Random.insideUnitSphere * 0.4f, Mathf.Lerp(1.5f, 2.8f, t) * sq * Random.Range(0.9f, 1.1f),
-                Random.Range(2.6f, 3.4f), A(GunSmoke, Random.Range(0.62f, 0.72f)));
+                Random.Range(2.6f, 3.4f) * lK, A(GunSmoke, Random.Range(0.62f, 0.72f) * opacity));
         }
         if (cl != null)
         {
-            int n = Mathf.Max(5, Mathf.RoundToInt(11f * s * lod));     // много частиц в глубину — облако объёмное
+            int n = Mathf.Max(4, Mathf.RoundToInt(11f * s * lod * nK)); // много частиц в глубину — облако объёмное
             for (int i = 0; i < n; i++)
             {
                 float t = (i + Random.value * 0.6f) / n;               // 0 — у дула, 1 — конец шлейфа
                 float w = Mathf.Lerp(0.08f, 0.5f, t) * sq;             // разброс поперёк — конус расширяется
                 Vector3 p = pos + d * (t * len) + side * Random.Range(-w, w) + up * (Random.Range(-0.3f, 0.8f) * w + t * 0.2f * sq);
                 Vector3 v = d * Mathf.Lerp(4f, 1.2f, t) * sq + (p - pos - d * (t * len)) * 1.5f + Random.insideUnitSphere * 0.3f;
-                One(cl, p, v, Mathf.Lerp(1.05f, 2.9f, t) * sq * Random.Range(0.85f, 1.15f), Random.Range(3.2f, 4.4f),
-                    A(GunSmoke, Mathf.Lerp(0.45f, 0.34f, t) * Random.Range(0.9f, 1.1f)));
+                One(cl, p, v, Mathf.Lerp(1.05f, 2.9f, t) * sq * Random.Range(0.85f, 1.15f), Random.Range(3.2f, 4.4f) * lK,
+                    A(GunSmoke, Mathf.Lerp(0.45f, 0.34f, t) * Random.Range(0.9f, 1.1f) * opacity));
             }
         }
         if (wi != null)
         {
-            int nw = Mathf.Max(2, Mathf.RoundToInt(4f * s * lod));
+            int nw = Mathf.Max(1, Mathf.RoundToInt(4f * s * lod * nK));
             for (int i = 0; i < nw; i++)
             {
                 float t = (i + Random.value) / nw;
                 Vector3 p = pos + d * (t * len) + side * Random.Range(-0.35f, 0.35f) * sq + up * (t * 0.3f * sq);
                 One(wi, p, d * Random.Range(0.5f, 2f) * sq + Random.insideUnitSphere * 0.4f, Mathf.Lerp(2f, 3.6f, t) * sq,
-                    Random.Range(4f, 5.5f), A(GunSmoke, Random.Range(0.28f, 0.38f)));
+                    Random.Range(4f, 5.5f) * lK, A(GunSmoke, Random.Range(0.28f, 0.38f) * opacity));
             }
         }
         FxPulse.Push(pos + d * 0.6f * sq, 3f * sq, 2.5f * sq);                 // ударная волна выстрела разгоняет висящий дым
-        for (int i = 0; i < 3; i++) AddHaze(pos + d * (len * (i + 0.5f) / 3f), (0.6f + 0.4f * i) * sq, 1f, 4.5f);
-        GroundBlast(pos, d, s, lod, len);
+        for (int i = 0; i < 3; i++) AddHaze(pos + d * (len * (i + 0.5f) / 3f), (0.6f + 0.4f * i) * sq, opacity, 4.5f);
+        GroundBlast(pos, d, s, lod, len, opacity);
     }
 
     // Ударная волна бьёт в землю под шлейфом: пыль одним-двумя облаками под ним (продолжают шлейф вниз), мусор подлетает.
     // Чем выше дуло (до 3 м), тем слабее
-    static void GroundBlast(Vector3 pos, Vector3 d, float s, float lod, float len)
+    static void GroundBlast(Vector3 pos, Vector3 d, float s, float lod, float len, float opacity)
     {
         const float maxH = 3f;
         int hc = Physics.RaycastNonAlloc(pos + d * 0.6f, Vector3.down, groundHits, maxH, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
@@ -992,7 +997,7 @@ public static partial class ParticleFx
             float t = nd == 1 ? 0.25f : (i == 0 ? 0.15f : 0.55f);
             float sz = Random.Range(3f, 3.8f) * sk;
             One(du, ground + fwd * (t * len) + right * Random.Range(-0.2f, 0.2f) + Vector3.up * 0.3f * sz, fwd * Random.Range(0.8f, 2f) * sk,
-                sz, Random.Range(3f, 4.2f), Tint(Dust, Random.Range(0.9f, 1.05f), Random.Range(0.5f, 0.6f)));
+                sz, Random.Range(3f, 4.2f), Tint(Dust, Random.Range(0.9f, 1.05f), Random.Range(0.5f, 0.6f) * opacity));
         }
 
         if (lod < 0.5f) return;
@@ -1022,16 +1027,16 @@ public static partial class ParticleFx
         }
     }
 
-    // Искры и дымок в месте попадания по танку
-    public static void HitSparks(Vector3 pos, Vector3 normal, bool big)
+    // Искры и дымок в месте попадания по танку. smoke = false — без дыма и пыли (плазма Твинса и Рикошета: пыли взяться неоткуда)
+    public static void HitSparks(Vector3 pos, Vector3 normal, bool big, bool smoke = true)
     {
         ParticleSystem s = Sparks();
         if (s == null) return;
-        ParticleSystem p = Puff();
         Vector3 n = normal.sqrMagnitude > 1e-4f ? normal : Vector3.up;
         Emit(s, big ? 26 : 12, pos, 0.05f, n, 0.7f, 4f, big ? 12f : 9f, 0.04f, 0.08f,
              0.2f, 0.5f, new Color(1f, 0.95f, 0.6f), new Color(1f, 0.6f, 0.2f));
-        Emit(p, big ? 2 : 1, pos, 0.1f, n, 0.6f, 0.5f, 1.5f, 1.1f, big ? 1.7f : 1.3f,
+        if (!smoke) return;
+        Emit(Puff(), big ? 2 : 1, pos, 0.1f, n, 0.6f, 0.5f, 1.5f, 1.1f, big ? 1.7f : 1.3f,
              1.6f, 2.4f, new Color(0.45f, 0.44f, 0.42f, 0.7f), new Color(0.55f, 0.54f, 0.52f, 0.6f));
     }
 

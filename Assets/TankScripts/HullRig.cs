@@ -88,6 +88,7 @@ public class GunInfo
     public float ejectPush;           // ход выталкивания гильзы из окна, м (0 — по её радиусу: вбок из окна); вдоль оси — не меньше длины
     public RigPoint ejectFly;         // куда гильза летит после выталкивания (0 — по ejectDir): порт выталкивает вдоль оси, вылет — вверх-вбок
     public MechPart[] mechanism;      // подвижные детали механизма выброса (шторки, толкатель) — TankShooter двигает их при выстреле
+    public SpinnerPart spinner;       // вращающаяся деталь (турбина Фриза)
     public float[] color;             // цвет, если у модели нет текстуры
     public float[] glow;              // цвет светящихся деталей башни и ствола (r, g, b, HDR), нет — цвет по умолчанию
     public float smoothness = 0.3f;
@@ -108,8 +109,22 @@ public class GunModel
     public Mesh barrel;               // может отсутствовать — тогда ствол часть башни
     public Mesh recoil, recoil2;      // подвижные части отката (от оси качания; у Твинса — по стволу на каждую), могут отсутствовать
     public Mesh[] mechanism;          // сетки деталей механизма выброса (по info.mechanism; нет файла — null)
+    public Mesh spinner;              // вращающаяся деталь (info.spinner), может отсутствовать
     public Material material;
     public Material barrelMaterial;
+}
+
+// Вращающаяся деталь (info.json «spinner»): отдельная сетка в папке модели в координатах башни, крутится вокруг оси axis
+// через точку center: на холостом ходу idle, при стрельбе разгоняется до fire (градусы в секунду); accel — доля fire за секунду.
+[System.Serializable]
+public class SpinnerPart
+{
+    public string mesh;
+    public RigPoint center;
+    public RigPoint axis;
+    public float idle = 120f;
+    public float fire = 1080f;
+    public float accel = 1.5f;
 }
 
 // Подвижная деталь механизма выброса гильз (info.json, «mechanism»): отдельная сетка в папке модели. Деталь крепится к

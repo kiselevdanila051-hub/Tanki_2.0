@@ -107,6 +107,7 @@ public class TankBuilder : MonoBehaviour
         List<Transform> recoilParts = new List<Transform>();
         List<Transform> mechParts = new List<Transform>();
         List<MechPart> mechInfo = new List<MechPart>();
+        Spinner spinner = null;
 
         if (gm != null)
         {
@@ -131,6 +132,18 @@ public class TankBuilder : MonoBehaviour
                          mp.onTurret ? gm.material : gm.barrelMaterial);
                 mechParts.Add(hg.transform);
                 mechInfo.Add(mp);
+            }
+            // вращающаяся деталь (турбина): петля в точке center (x зеркалится), деталь под ней
+            if (gm.spinner != null && gm.info.spinner != null)
+            {
+                SpinnerPart sp = gm.info.spinner;
+                Vector3 c = sp.center != null ? new Vector3(-sp.center.x, sp.center.y, sp.center.z) : Vector3.zero;
+                GameObject sg = new GameObject("Spinner " + sp.mesh);
+                sg.transform.SetParent(turret.transform, false);
+                sg.transform.localPosition = c;
+                MeshPart("TurretMechModel", sg.transform, -c, gm.spinner, gm.material);
+                spinner = sg.AddComponent<Spinner>();
+                spinner.Setup(sp.axis != null ? new Vector3(-sp.axis.x, sp.axis.y, sp.axis.z) : Vector3.forward, sp.idle, sp.fire, sp.accel);
             }
             muzzlePos = new Vector3(gm.info.muzzle.x, gm.info.muzzle.y, gm.info.muzzle.z);
         }
@@ -190,6 +203,7 @@ public class TankBuilder : MonoBehaviour
                           gm != null && gm.info.ejectOnTurret ? turret.transform : null, gm != null ? gm.info.ejectPush : 0f, ejectFly);
         // Механизм выброса: ось поворота при отражении x — (−x, y, z) с обратным углом, сдвиг — (−x, y, z)
         if (mechParts.Count > 0) shooter.SetMechanism(mechParts.ToArray(), mechInfo.ToArray());
+        if (spinner != null) spinner.shooter = shooter;
 
         // Скруглённая форма башни (капсула вдоль башни по её габаритам) — включается, только когда танк перевёрнут: на плоской
         // крыше общей коробки (она охватывает и башню) танк лежал ровно, а на башне ему не удержаться — заваливается набок

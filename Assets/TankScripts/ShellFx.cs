@@ -76,16 +76,17 @@ public static class ShellFx
     }
 
     // carrier — ствольная группа (ось качания), localPos / localDir — окно выброса и направление вылета в её осях,
-    // length — длина гильзы, м; glow — цвет светящихся частей (HDR); owner — свой танк (с ним гильза не сталкивается)
+    // length — длина гильзы, м; glow — цвет светящихся частей (HDR); owner — свой танк (с ним гильза не сталкивается);
+    // push — ход выталкивания из окна, м (0 — по радиусу гильзы: вбок из окна; вдоль оси — задаётся не меньше длины)
     public static void Eject(Transform carrier, Vector3 localPos, Vector3 localDir, float length, CasingKind kind, bool future,
-                             Color glow, Rigidbody owner)
+                             Color glow, Rigidbody owner, float push = 0f, Vector3 fly = default)
     {
         if (RingTest.NoFx || length <= 0f || carrier == null) return;
         CasingDesign d = Design(kind, future);
         Casing c = Rent();
         active.Add(c);
         c.Launch(d, carrier, localPos, localDir.sqrMagnitude > 1e-6f ? localDir.normalized : Vector3.right, length, glow,
-                 owner, OwnerColliders(owner), Random.Range(7f, 9f));
+                 owner, OwnerColliders(owner), Random.Range(7f, 9f), push, fly);
     }
 
     static Collider[] OwnerColliders(Rigidbody owner)
@@ -480,7 +481,7 @@ public class Casing : MonoBehaviour
 
     CasingDesign design;
     Transform carrier;
-    Vector3 localPos, localDir;
+    Vector3 localPos, localDir, flyDir;
     Rigidbody owner;
     Collider[] ownerCols;
     Color glow;
@@ -497,13 +498,14 @@ public class Casing : MonoBehaviour
     }
 
     public void Launch(CasingDesign d, Transform carrier, Vector3 localPos, Vector3 localDir, float length, Color glow,
-                       Rigidbody owner, Collider[] ownerCols, float lifetime)
+                       Rigidbody owner, Collider[] ownerCols, float lifetime, float push = 0f, Vector3 fly = default)
     {
         if (rb == null) Awake();
         design = d;
         this.carrier = carrier;
         this.localPos = localPos;
         this.localDir = localDir;
+        flyDir = fly.sqrMagnitude > 1e-6f ? fly.normalized : localDir;
         this.length = length;
         this.glow = glow;
         this.owner = owner;
@@ -513,8 +515,8 @@ public class Casing : MonoBehaviour
         lastSound = -1f;
         sounds = 0;
         flying = false;
-        // ход выталкивания: гильза целиком выходит из окна (радиус + запас)
-        pushDist = length * d.radius * 1.3f + 0.02f;
+        // ход выталкивания: гильза целиком выходит из окна (радиус + запас), если ход не задан моделью
+        pushDist = push > 0f ? push : length * d.radius * 1.3f + 0.02f;
 
         mf.sharedMesh = d.mesh;
         if (mats == null || mats.Length != d.mats.Length) mats = new Material[d.mats.Length];
@@ -566,7 +568,7 @@ public class Casing : MonoBehaviour
     {
         flying = true;
         Vector3 axis = transform.forward;
-        Vector3 dir = carrier != null ? carrier.TransformDirection(localDir).normalized : transform.right;
+        Vector3 dir = carrier != null ? carrier.TransformDirection(flyDir).normalized : transform.right;
         Vector3 baseVel = owner != null ? owner.GetPointVelocity(transform.position) : Vector3.zero;
         col.enabled = true;
         if (ownerCols != null)

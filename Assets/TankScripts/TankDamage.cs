@@ -2,7 +2,8 @@
 using UnityEngine;
 
 // Повреждения танка: работает с любой моделью корпуса и пушки (и с заглушками из кубов), берёт детали, которые
-// построил TankBuilder: Hull, TurretModel / Turret Body, BarrelModel. Внешний вид — износ, заводской цвет, вставки
+// построил TankBuilder: Hull, TurretModel / Turret Body, BarrelModel, RecoilModel (подвижные части отката — как ствол).
+// Внешний вид — износ, заводской цвет, вставки
 // и краска (шейдер Tanks/DamageLit).
 // Модификации до destructibleMaxMk (корпус — по модификации корпуса, башня и ствол — пушки) разрушаются по деталям
 // (TankDamageM0.cs); у остальных попадание — искры и осколки.
@@ -15,6 +16,10 @@ public partial class TankDamage : MonoBehaviour
     // Податливость брони по модификациям М0..М3: ранние мнутся сильно, М3 — заметно слабее
     public float[] armorByMk = { 1f, 0.85f, 0.7f, 0.35f };
 
+    // Прочность отрываемых деталей по модификациям М0..М3 (множитель к запасу детали): навесное М2 (ДЗ, плиты, КАЗ) держит
+    // больше попаданий — на стенде 10 выстрелов Грома обдирали М2 почти догола (15.10)
+    public float[] pieceHpByMk = { 1f, 1f, 1.5f, 2f };
+
     // Объём моделей (шейдер Tanks/DamageLit, данные запекает Tools/HullTool Bake): сила слоёв 0..1.5
     public float aoStrength = 1f;     // тени в щелях
     public float wearStrength = 1f;   // потёртости кромок до металла
@@ -25,6 +30,10 @@ public partial class TankDamage : MonoBehaviour
     // Износ по модификациям М0..М3 (множитель к ползунку гаража): М0 — старые потрёпанные машины, М3 — почти чистые;
     // у М2 полный (было 0,3 — ползунок на М2 почти не действовал, пользователь: «износ не работает»)
     public float[] weatherByMk = { 1f, 0.85f, 1f, 0.12f };
+
+    // Тени в щелях (запечённое затенение темнит цвет до 30 %) по модификациям М0..М3: на чистых гранёных М3 пятна
+    // затенения у стыков деталей читались как грязь (Хорнет М3, правка пользователя)
+    public float[] aoByMk = { 1f, 1f, 1f, 0.35f };
 
     // Заводской цвет корпусов и башен-моделей (color из rig.json и info.json перекрывается; ствол остаётся тёмным)
     public Color hullColor = new Color(0.58f, 0.545f, 0.475f);
@@ -54,6 +63,7 @@ public partial class TankDamage : MonoBehaviour
         public float scale = 1f;
         public float dentFactor = 1f;      // ствол мнётся слабее
         public float armor = 1f;           // податливость брони модификации
+        public float pieceHp = 1f;         // прочность отрываемых деталей модификации (pieceHpByMk)
         public bool gone;                  // улетела вместе с башней
         public bool dentable;              // разрушаемая модификация: вмятины и отрыв деталей (иначе только следы шейдером)
         public bool vDirty, bDirty;
@@ -160,13 +170,14 @@ public partial class TankDamage : MonoBehaviour
 
             bool hull = n == "Hull";
             bool turret = n == "TurretModel" || n == "Turret Body";
-            bool barrel = n == "BarrelModel" || n == "Barrel";
+            bool barrel = n == "BarrelModel" || n == "Barrel" || n == "RecoilModel";   // RecoilModel — подвижные части отката
             if (!hull && !turret && !barrel) continue;   // гусеницы, метка — без повреждений
 
             Part p = MakePart(mf, r, n);
             if (p == null) continue;
             Vector3 size = p.bounds.size * p.scale;
             p.armor = hull ? hullArmor : gunArmor;
+            p.pieceHp = ByMk(pieceHpByMk, builder != null ? (hull ? builder.hullMk : builder.gunMk) : 0);
             ApplyLook(p, builder);
             if (hull) tankSize = Mathf.Max(size.x, Mathf.Max(size.y, size.z));
             if (barrel) p.dentFactor = 0.45f;
@@ -187,19 +198,21 @@ public partial class TankDamage : MonoBehaviour
     void ApplyLook(Part p, TankBuilder builder)
     {
         bool hull = p.name == "Hull";
-        float weather = ByMk(weatherByMk, builder != null ? (hull ? builder.hullMk : builder.gunMk) : 0);
+        int mk = builder != null ? (hull ? builder.hullMk : builder.gunMk) : 0;
+        float weather = ByMk(weatherByMk, mk);
         float wearMul = builder != null && builder.wear >= 0f ? builder.wear : Paints.Wear;   // у ботов — свой, случайный
         foreach (Material m in p.mats)
         {
             if (m == null) continue;
+            m.SetFloat("_AOStrength", aoStrength * ByMk(aoByMk, mk));
             m.SetFloat("_WearStrength", wearStrength * weather * wearMul);
             float dirt = dirtOn ? weather * Paints.Dirt : 0f;
             m.SetFloat("_DirtStrength", dirtStrength * dirt);
             m.SetFloat("_DustStrength", dustStrength * dirt);
             // вставки — на корпусе (по модификации корпуса) и на пушке (по модификации пушки); башня — в цвет корпуса,
             // ствол с разметкой вставок тоже (металлические части ствола — вставки), без разметки остаётся тёмным
-            SetInlay(m, builder != null ? (hull ? builder.hullMk : builder.gunMk) : 0);
-            if (hull || p.name == "TurretModel" || (p.name == "BarrelModel" && p.inlay)) m.SetColor("_BaseColor", hullColor);
+            SetInlay(m, mk);
+            if (hull || p.name == "TurretModel" || ((p.name == "BarrelModel" || p.name == "RecoilModel") && p.inlay)) m.SetColor("_BaseColor", hullColor);
             if (m.HasProperty("_PaintOn")) Paints.Apply(m, builder != null ? builder.paint : 0, m.GetColor("_BaseColor"));
         }
     }

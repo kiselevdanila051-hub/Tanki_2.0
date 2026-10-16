@@ -255,8 +255,9 @@ Shader "Tanks/DamageLit"
                 half tow = sin(across * 3.14159);              // выпуклость жгута
                 half fib = 0.9 + 0.1 * sin(fiber * 60.0 + across * 7.0);
                 half tone = (along ? 1.0 : 0.62) * (0.55 + 0.45 * tow) * fib;
-                gloss = 0.62 + 0.25 * tow;
-                return half3(0.045, 0.047, 0.052) + half3(0.085, 0.088, 0.095) * tone;
+                // почти чёрный (правка 13.10: было 0.07…0.13 линейного — читалось серым); плетение — на 2:1 по яркости и бликом
+                gloss = 0.55 + 0.25 * tow;
+                return half3(0.012, 0.0125, 0.014) + half3(0.026, 0.027, 0.030) * tone;
             }
 
             // Вставка: свой цвет вместо окраски — металл (_MetalColor, блеск _MetalMetallic/_MetalSmooth) или карбон

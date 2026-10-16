@@ -1,22 +1,40 @@
 {
- "modelName": "Railgun_M3",
- "scale": 0.0014197225993856047,
- "height": 0.535,
- "gunPivot": {
-  "x": 0,
-  "y": 0.2616,
-  "z": 0.6712
- },
- "muzzle": {
-  "x": 0.0,
-  "y": 0.0,
-  "z": 1.2895
- },
- "color": [
-  0.42,
-  0.47,
-  0.3
- ],
- "smoothness": 0.25,
- "metallic": 0.15
+    "modelName":  "Railgun_M3",
+    "scale":  0.0014197225993856047,
+    "height":  0.5463,
+    "gunPivot":  {
+                     "x":  0.0,
+                     "y":  0.2616,
+                     "z":  0.6712
+                 },
+    "muzzle":  {
+                   "x":  0.0,
+                   "y":  0.0,
+                   "z":  1.2888
+               },
+    "color":  [
+                  0.42,
+                  0.47,
+                  0.3
+              ],
+    "smoothness":  0.25,
+    "metallic":  0.15,
+    "laser":  {
+                  "x":  0.11,
+                  "y":  0.0004,
+                  "z":  0.1408
+              },
+    "laserOnBarrel":  true,
+    "recoilDist":  0.06,
+    "eject":  {
+                  "x":  0.258,
+                  "y":  0.0804,
+                  "z":  -0.2112
+              },
+    "ejectDir":  {
+                     "x":  0.6,
+                     "y":  1.0,
+                     "z":  0.25
+                 },
+    "casing":  0.08
 }

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 // Набор ходовой по модификации корпуса (Resources/Models/Tracks_M<k>): трак, опорный каток (+ резиновые бандажи),
 // натяжное колесо (ленивец) и ведущее колесо. Модели — Tools/Blender/tracks_m<k>.py: катки нормированы (наружный
@@ -9,7 +9,8 @@ using UnityEngine;
 // Наборы по эпохам, чем выше модификация — тем технологичнее: М0 — Вторая мировая (открытое литое звено «решёткой», широкие
 // катки на штампованных дисках, «фонарное» ведущее колесо, пружина); М1 — начало 2000-х (литые траки с гребнем, сдвоенные
 // спицевые катки, амортизаторы); М2 — современность (трак с резиновой накладкой, облегчённые катки, сегментное ведущее колесо,
-// гидропневматика); М3 — будущее (композитные сегменты, катки-кольца с лопатками, линейные приводы). Генераторы —
+// гидропневматика); М3 — будущее (траки «браслетом» по концепту — ряды из трёх и двух брусков через один, link / link_b;
+// катки — однотонные почти чёрные: толстый обод в два пояса с утопленным диском на болтах, линейные приводы). Генераторы —
 // Tools/Blender/tracks_m<k>.py. Если набора нет — стандартные катки и лента (null).
 public class TrackSet
 {
@@ -18,8 +19,12 @@ public class TrackSet
     public static readonly Vector2 ArmLug = new Vector2(0.22f, -0.8f);       // палец амортизатора на балансире (y, z)
     public static readonly Vector2 DamperTop = new Vector2(0.65f, -0.55f);   // верхний палец амортизатора от оси качания
     public const float RollerSize = 0.35f;                         // радиус поддерживающего катка — доля радиуса катка
+    // Подвеска крупных катков (Мамонты М1–М2, r ≈ 0.28) строится в размер катка r 0.2: иначе кронштейны амортизаторов
+    // крайних катков выходили сквозь кормовую палубу
+    public const float MaxSuspR = 0.2f;
 
     public Mesh link, road, idler, sprocket;   // road — каток с бандажами (подсетки: 0 — сталь, 1 — резина)
+    public Mesh linkB;                         // необязательный второй трак: траки чередуются link / linkB («кладка», М3)
     public Mesh arm, mount, mountDamper, damper, roller;
     public Color steel, linkSteel, rubber;
     // Наружная сторона колеса (колпак ступицы выступает наружу) — знак x центра сетки: импорт OBJ в Unity
@@ -49,6 +54,7 @@ public class TrackSet
         if (link == null || road == null || idler == null || sprocket == null) return null;
 
         TrackSet s = new TrackSet { link = link, idler = idler, sprocket = sprocket };
+        s.linkB = Resources.Load<Mesh>(f + "link_b");
         s.road = WithTire(road, tire);
         s.arm = Resources.Load<Mesh>(f + "arm");
         s.mount = Resources.Load<Mesh>(f + "mount");
@@ -62,7 +68,7 @@ public class TrackSet
         float outer = s.arm != null ? -Mathf.Sign(s.arm.bounds.center.x) : OuterSign(road);
         s.roadSign = s.idlerSign = s.sprocketSign = outer;
         // Цвета по эпохе: М0 — тёмная ржавая сталь; М1 — сталь начала 2000-х; М2 — светлее, чёрная резина накладок;
-        // М3 — светлый титан и тёмный композит
+        // М3 — почти чёрный композит
         switch (mk)
         {
             case 0:
@@ -75,10 +81,10 @@ public class TrackSet
                 s.linkSteel = new Color(0.27f, 0.28f, 0.30f);
                 s.rubber = new Color(0.06f, 0.06f, 0.06f);
                 break;
-            case 3:
-                s.steel = new Color(0.58f, 0.61f, 0.65f);
-                s.linkSteel = new Color(0.09f, 0.10f, 0.12f);
-                s.rubber = new Color(0.04f, 0.04f, 0.05f);
+            case 3:                                     // траки по концепту — «браслетом»; катки, колёса и траки почти чёрные,
+                s.steel = new Color(0.12f, 0.122f, 0.13f);  // однотонные (правка 13.10: были серые 0.41…0.53 — «темнее, около
+                s.linkSteel = new Color(0.10f, 0.102f, 0.11f);   // чёрного»); диск катка лишь чуть темнее обода
+                s.rubber = new Color(0.09f, 0.092f, 0.10f);
                 break;
             default:                                    // М1 — тёмная потёртая сталь по арту М-1, толстые резиновые бандажи
                 s.steel = new Color(0.34f, 0.34f, 0.35f);

@@ -7,7 +7,8 @@ using UnityEngine;
 //   Cone / Beam — потоковые пушки на запасе энергии (Огнемёт, Фриз, Изида);
 //   Sniper — Шафт: выстрел навскидку или прицел с накоплением заряда.
 // Видимые выстрелы: плазмоиды, трассеры, луч Рельсы с зарядкой, росчерк Шафта — ShotFx; струи и дуга Изиды — StreamFx;
-// луч прицела Шафта — здесь (UpdateScopeLaser).
+// луч прицела Шафта — здесь (UpdateScopeLaser). Откат подвижных частей ствола и выброс гильз — Kick / UpdateRecoil
+// (гильзы летят в ShellFx).
 // Обычно работает автонаводка (AutoAim): ствол сам наклоняется к цели в пределах своих углов. При ручной наводке игрока
 // (manualAim, выставляет PlayerInput по AimPrefs) ствол наклоняет мышь (TankInput.AimPitch), выстрел идёт вдоль ствола.
 public class TankShooter : MonoBehaviour
@@ -23,6 +24,17 @@ public class TankShooter : MonoBehaviour
     public bool autoReleaseAtFullCharge = false;  // боты с Шафтом стреляют сами при полном заряде
     public bool manualAim;                        // ручная наводка игрока: без автоприцеливания, ствол — по TankInput.AimPitch
     public Transform laserEmitter;                // излучатель лазерного целеуказателя на модели башни (null — нет на модели)
+
+    // Откат подвижных частей ствола и выброс гильз (SetRecoil — из TankBuilder): части двигаются назад вдоль оси ствола
+    // (быстро назад, плавно на место), гильза вылетает из окна выброса с задержкой, когда открывается затвор
+    Transform[] recoilParts;
+    float[] recoilSide, kickTime, kickPower;
+    float recoilDist, casingLength;
+    Vector3 ejectLocal, ejectDirLocal;
+    CasingKind casingKind;
+    bool recoilActive, ejectPending;
+    float ejectTime, ejectSign;
+    const float KickBack = 0.045f, KickHold = 0.03f, KickReturn = 0.42f;   // фазы отката, с
 
     public bool IsScoping { get; private set; }
     public float Charge01 { get; private set; }
@@ -164,6 +176,105 @@ public class TankShooter : MonoBehaviour
         float speed = team == 1 && manualAim ? 160f : 80f;               // стабилизатору нужен быстрый привод
         barrelPitch = Mathf.MoveTowards(barrelPitch, target, speed * Time.deltaTime);
         gunPivot.localRotation = Quaternion.Euler(-barrelPitch, 0f, 0f);
+        UpdateRecoil();
+    }
+
+    // ---------- Откат и гильзы ----------
+    // parts — подвижные части (у Твинса по одной на ствол: какая откатывается — по стороне дула), dist — ход, м модели;
+    // eject / ejectDir — окно выброса и направление в осях ствольной группы (уже с отражением x), casing — длина гильзы
+    public void SetRecoil(Transform[] parts, float dist, Vector3 eject, Vector3 ejectDir, float casing, CasingKind kind)
+    {
+        recoilParts = parts != null && parts.Length > 0 ? parts : null;
+        int n = recoilParts != null ? recoilParts.Length : 0;
+        recoilSide = new float[n];
+        kickTime = new float[n];
+        kickPower = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            MeshFilter mf = recoilParts[i].GetComponent<MeshFilter>();
+            recoilSide[i] = mf != null && mf.sharedMesh != null ? Mathf.Sign(mf.sharedMesh.bounds.center.x) : 0f;
+            kickTime[i] = -10f;
+        }
+        recoilDist = dist;
+        ejectLocal = eject;
+        ejectDirLocal = ejectDir.sqrMagnitude > 1e-6f ? ejectDir.normalized : Vector3.right;
+        casingLength = casing;
+        casingKind = kind;
+        recoilActive = ejectPending = false;
+    }
+
+    // Выстрел: откат (power — доля хода) и гильза. Вызывается после выбора ствола (Твинс)
+    void Kick(float power)
+    {
+        float side = muzzleSide > 0f ? Mathf.Sign(muzzle.localPosition.x) : 0f;
+        if (recoilParts != null && recoilDist > 0f)
+        {
+            for (int i = 0; i < recoilParts.Length; i++)
+            {
+                if (recoilParts[i] == null || (side != 0f && recoilParts.Length > 1 && recoilSide[i] != side)) continue;
+                kickTime[i] = Time.time;
+                kickPower[i] = power;
+            }
+            recoilActive = true;
+        }
+        if (casingLength > 0f)
+        {
+            ejectPending = true;
+            ejectTime = Time.time + (casingKind == CasingKind.Rifle ? 0.32f : casingKind == CasingKind.Cell ? 0.16f : 0.11f);
+            ejectSign = side;
+        }
+    }
+
+    // Ход части в долях: быстро назад (KickBack), пауза, плавно на место
+    static float RecoilCurve(float t)
+    {
+        if (t < 0f) return 0f;
+        if (t < KickBack) { float k = 1f - t / KickBack; return 1f - k * k; }
+        t -= KickBack + KickHold;
+        if (t < 0f) return 1f;
+        if (t >= KickReturn) return 0f;
+        float r = t / KickReturn;
+        return 1f - r * r * (3f - 2f * r);
+    }
+
+    void UpdateRecoil()
+    {
+        if (recoilActive)
+        {
+            bool any = false;
+            for (int i = 0; i < recoilParts.Length; i++)
+            {
+                if (recoilParts[i] == null) continue;
+                float t = Time.time - kickTime[i];
+                float off = RecoilCurve(t) * recoilDist * kickPower[i];
+                recoilParts[i].localPosition = new Vector3(0f, 0f, -off);
+                if (t < KickBack + KickHold + KickReturn) any = true;
+            }
+            recoilActive = any;
+        }
+        if (ejectPending && Time.time >= ejectTime)
+        {
+            ejectPending = false;
+            EjectCasing();
+        }
+    }
+
+    void EjectCasing()
+    {
+        Vector3 lp = ejectLocal, ld = ejectDirLocal;
+        if (ejectSign != 0f)                                  // два ствола: окно у того, что выстрелил (зеркально по x)
+        {
+            lp.x = Mathf.Abs(lp.x) * ejectSign;
+            ld.x = Mathf.Abs(ld.x) * ejectSign;
+        }
+        Vector3 pos = gunPivot.TransformPoint(lp);
+        Camera cam = Camera.main;
+        if (cam != null && (pos - cam.transform.position).sqrMagnitude > 80f * 80f) return;   // вдали гильз не видно
+        Vector3 dir = gunPivot.TransformDirection(ld).normalized;
+        Vector3 vel = (rb != null ? rb.GetPointVelocity(pos) : Vector3.zero) +
+                      (dir + Random.insideUnitSphere * 0.12f).normalized * Random.Range(2.6f, 3.6f);
+        float len = casingLength * gunPivot.lossyScale.z;
+        ShellFx.Eject(pos, gunPivot.rotation, vel, len, casingKind, gun.FlashColor, rb);
     }
 
     // Наклон башни (её «вперёд») к горизонту, градусы (+ нос башни вверх)
@@ -297,6 +408,7 @@ public class TankShooter : MonoBehaviour
             dir = FireProjectile();
         }
         Combat.Recoil(rb, controller, dir, gun.recoil, gun.recoilStagger, muzzle.position);
+        Kick(1f);
     }
 
     Vector3 FireProjectile()
@@ -890,6 +1002,7 @@ public class TankShooter : MonoBehaviour
             FireRay(aim.direction, gun.damageMax * gun.quickShotFactor, gun.impact, true, 0.05f, 0.08f);
             Combat.Recoil(rb, controller, aim.direction, gun.recoil, gun.recoilStagger, muzzle.position);
         }
+        Kick(scoped ? Mathf.Lerp(0.75f, 1f, charge) : 0.75f);
     }
 
     // ---------- Интерфейс игрока (рисует GameManager) ----------

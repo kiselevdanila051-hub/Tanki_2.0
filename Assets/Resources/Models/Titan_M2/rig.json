@@ -1,5 +1,6 @@
 {
  "modelName": "Titan_M2",
+ "destructible": true,
  "gunScale": 1.1,
  "scale": 0.0018165734171748538,
  "stockWheels": true,
@@ -55,10 +56,10 @@
   "r": 0.1272
  },
  "topSag": 0.02,
- "hullBottomY": -0.3324,
- "hullTopY": 0.5009,
- "hullHalfWidth": 0.9805,
- "hullHalfLength": 1.7265,
+ "hullBottomY": -0.33,
+ "hullTopY": 0.5014,
+ "hullHalfWidth": 1.0758,
+ "hullHalfLength": 1.804,
  "turretMount": {
   "x": 0.0,
   "y": 0.5014,

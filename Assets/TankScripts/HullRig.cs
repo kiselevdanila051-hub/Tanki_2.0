@@ -79,6 +79,10 @@ public class GunInfo
     public RigPoint laser;            // излучатель лазерного целеуказателя: от точки крепления башни или (laserOnBarrel) от оси качания
     public bool laserOnBarrel;        // излучатель на ствольной группе — качается вместе со стволом
     public bool destructible;         // разрушение по деталям, даже если модификация старше TankDamage.destructibleMaxMk (модель собрана под него)
+    public float recoilDist;          // откат подвижных частей ствола (recoil.obj, recoil2.obj) назад вдоль оси при выстреле, м; 0 — без отката
+    public RigPoint eject;            // окно выброса гильз от оси качания (координаты файла OBJ — x при импорте зеркалится)
+    public RigPoint ejectDir;         // куда летят гильзы (оси ствольной группы, координаты файла OBJ)
+    public float casing;              // длина гильзы, м; 0 — гильз нет
     public float[] color;             // цвет, если у модели нет текстуры
     public float smoothness = 0.3f;
     public float metallic = 0.1f;
@@ -96,6 +100,7 @@ public class GunModel
     public GunInfo info;
     public Mesh turret;
     public Mesh barrel;               // может отсутствовать — тогда ствол часть башни
+    public Mesh recoil, recoil2;      // подвижные части отката (от оси качания; у Твинса — по стволу на каждую), могут отсутствовать
     public Material material;
     public Material barrelMaterial;
 }

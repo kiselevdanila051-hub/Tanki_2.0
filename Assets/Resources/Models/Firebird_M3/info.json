@@ -1,22 +1,22 @@
 {
- "modelName": "Firebird_M3",
- "scale": 0.0013149901200772826,
- "height": 0.6123,
- "gunPivot": {
-  "x": 0,
-  "y": 0.2122,
-  "z": 0.973
- },
- "muzzle": {
-  "x": 0.0,
-  "y": 0.0,
-  "z": 0.491
- },
- "color": [
-  0.42,
-  0.47,
-  0.3
- ],
- "smoothness": 0.25,
- "metallic": 0.15
+    "modelName":  "Firebird_M3",
+    "scale":  0.0013149901200772826,
+    "height":  0.5988,
+    "gunPivot":  {
+                     "x":  0.0,
+                     "y":  0.2122,
+                     "z":  0.973
+                 },
+    "muzzle":  {
+                   "x":  0.0,
+                   "y":  0.0,
+                   "z":  0.491
+               },
+    "color":  [
+                  0.42,
+                  0.47,
+                  0.3
+              ],
+    "smoothness":  0.25,
+    "metallic":  0.15
 }

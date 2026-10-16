@@ -49,13 +49,13 @@
   "r": 0.1214
  },
  "topSag": 0.02,
- "hullBottomY": -0.29,
- "hullTopY": 0.4824,
- "hullHalfWidth": 0.9868,
- "hullHalfLength": 1.5002,
+ "hullBottomY": -0.323,
+ "hullTopY": 0.4,
+ "hullHalfWidth": 0.991,
+ "hullHalfLength": 1.555,
  "turretMount": {
   "x": 0.0,
-  "y": 0.3783,
+  "y": 0.4,
   "z": 0.0615
  },
  "wheelMidX": {

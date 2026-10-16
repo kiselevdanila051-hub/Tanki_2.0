@@ -1,7 +1,7 @@
 {
     "modelName":  "Shaft_M2",
     "scale":  0.00147175242200468,
-    "height":  0.606,
+    "height":  0.6179,
     "gunPivot":  {
                      "x":  0.0,
                      "y":  0.2668,
@@ -19,11 +19,17 @@
               ],
     "smoothness":  0.25,
     "metallic":  0.15,
-    "laser":  {
-                  "x":  -0.1525,
-                  "y":  0.0134,
-                  "z":  0.227
+    "destructible":  true,
+    "recoilDist":  0.09,
+    "eject":  {
+                  "x":  0.15,
+                  "y":  -0.0318,
+                  "z":  0.387
               },
-    "laserOnBarrel":  true,
-    "destructible":  true
+    "ejectDir":  {
+                     "x":  1.0,
+                     "y":  0.55,
+                     "z":  -0.25
+                 },
+    "casing":  0.13
 }

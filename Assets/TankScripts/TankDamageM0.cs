@@ -59,7 +59,7 @@ public partial class TankDamage
         for (int u = 0; u < n; u++)
         {
             ModelPieces.Unit un = p.mp.units[u];
-            float hp = maxH * Mathf.Clamp(un.size * p.scale / 1.2f, 0.05f, 0.35f) * (un.big ? 2.5f : 1f);
+            float hp = maxH * Mathf.Clamp(un.size * p.scale / 1.2f, 0.05f, 0.35f) * (un.big ? 2.5f : 1f) * p.pieceHp;
             p.unitHp[u] = p.unitMax[u] = hp;
         }
     }
@@ -684,26 +684,23 @@ public partial class TankDamage
         if (Random.value < barrelOffChance) BarrelOff(center);
     }
 
-    // Ствол отрывает от башни: улетает целиком (копия меша и материалов), на маске — рваная гарь
+    // Ствол отрывает от башни: улетает целиком (копия меша и материалов; подвижные части отката — дочерними мешами того же
+    // обломка), на маске — рваная гарь
     void BarrelOff(Vector3 center)
     {
         Part barrel = null, turret = null;
+        List<Part> moving = new List<Part>();
         foreach (Part p in parts)
         {
             if (p.gone || p.rend == null || !p.rend.enabled) continue;
             if (p.name == "BarrelModel") barrel = p;
             if (p.name == "TurretModel") turret = p;
+            if (p.name == "RecoilModel") moving.Add(p);
         }
         if (barrel == null) return;
         Mesh copy = Instantiate(barrel.mesh != null ? barrel.mesh : barrel.mf.sharedMesh);
         copy.RecalculateBounds();
-        Material[] mats = new Material[barrel.mats.Length];
-        for (int i = 0; i < mats.Length; i++)
-        {
-            mats[i] = new Material(barrel.mats[i]);
-            mats[i].SetFloat(CullId, 0f);
-            if (mats[i].HasProperty(BaseColorId)) mats[i].SetColor(BaseColorId, mats[i].GetColor(BaseColorId) * 0.5f);
-        }
+        Material[] mats = BurntCopies(barrel);
         Transform tr = barrel.tr;
         Vector3 baseVel = rb != null ? rb.linearVelocity : Vector3.zero;
         Vector3 vel = baseVel + (tr.forward * 0.6f + Vector3.up + Random.insideUnitSphere * 0.3f).normalized * Random.Range(6f, 9f);
@@ -712,6 +709,21 @@ public partial class TankDamage
             mats, vel, Random.insideUnitSphere * 6f, 12f);
         Debris dbr = go.GetComponent<Debris>();
         foreach (Material m in mats) dbr.AddOwned(m);
+        foreach (Part p in moving)
+        {
+            Mesh mc = Instantiate(p.mesh != null ? p.mesh : p.mf.sharedMesh);
+            Material[] pm = BurntCopies(p);
+            GameObject child = new GameObject("RecoilDebris");
+            child.layer = go.layer;
+            child.transform.SetParent(go.transform, false);
+            child.transform.localPosition = tr.InverseTransformPoint(p.tr.position);
+            child.AddComponent<MeshFilter>().sharedMesh = mc;
+            child.AddComponent<MeshRenderer>().sharedMaterials = pm;
+            dbr.AddOwned(mc);
+            foreach (Material m in pm) dbr.AddOwned(m);
+            p.rend.enabled = false;
+            p.gone = true;
+        }
         barrel.rend.enabled = false;
         barrel.gone = true;
         if (turret != null)
@@ -722,5 +734,18 @@ public partial class TankDamage
         }
         ParticleFx.HitSparks(tr.position, tr.forward, true);
         SpawnBits(tr.position, tr.forward, 7, 7f, true);
+    }
+
+    // Копии материалов детали для обломка: двусторонние, обгоревшие (темнее вдвое)
+    Material[] BurntCopies(Part p)
+    {
+        Material[] mats = new Material[p.mats.Length];
+        for (int i = 0; i < mats.Length; i++)
+        {
+            mats[i] = new Material(p.mats[i]);
+            mats[i].SetFloat(CullId, 0f);
+            if (mats[i].HasProperty(BaseColorId)) mats[i].SetColor(BaseColorId, mats[i].GetColor(BaseColorId) * 0.5f);
+        }
+        return mats;
     }
 }

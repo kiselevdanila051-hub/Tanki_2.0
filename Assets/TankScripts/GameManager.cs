@@ -161,6 +161,7 @@ public class GameManager : MonoBehaviour
         // Обломки, осколки и выключенные объекты пулов эффектов боя не держим в памяти между боями
         DebrisSpawner.Clear();
         ShotFx.Clear();
+        ShellFx.Clear();
         Fx.ClearPool();
     }
 

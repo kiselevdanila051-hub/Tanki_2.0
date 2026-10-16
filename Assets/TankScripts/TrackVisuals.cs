@@ -38,6 +38,8 @@ public class TrackVisuals : MonoBehaviour
     Matrix4x4[] linkMatrices;
     int linkCount, linksSide0;
     Matrix4x4[] frozenLinks;       // гусеницы разорваны (Shatter): оставшиеся траки лежат на месте (координаты модели)
+    bool[] frozenOdd;              // у оставшихся траков — второй ли это трак пары (набор с чередованием link / linkB)
+    Matrix4x4[] bufA, bufB;        // траки, разобранные по сеткам (набор с чередованием)
     Transform model;
     // Подвеска набора: балансиры и амортизаторы следуют за катками, поддерживающие катки крутятся с лентой
     Transform[] arms, dampers, rollers;
@@ -48,6 +50,14 @@ public class TrackVisuals : MonoBehaviour
     // Верхняя ветвь на поддерживающих катках (rig.topRollers): z катков спереди назад, высота средней линии ветви
     float[] topZ;
     float topY;
+    // Крупные катки выше прямой «ленивец — ведущее колесо» (Мамонт М1–М2): ветвь лежит на катках — верхняя выпуклая
+    // оболочка дуг ленивца, катков и ведущего колеса; ленивец и ведущее колесо лента покидает по касательной
+    bool wrapTop;
+    Vector2[] wrapPts, wrapHull;
+    int[] wrapTag, wrapHullTag;    // -1000…-1 — ленивец (угол −1 − тег), 1000+ — ведущее колесо (угол тег − 1000), 0 — каток
+    const int WrapSamples = 24;    // точек верхней ветви между касаниями ленивца и ведущего колеса
+    const float WrapGap = 0.012f;  // лента над бандажом катка
+    const float WrapTrigger = 0.04f;   // режим включается, если каток выше прямой заметно (у прежних корпусов — до 3 см)
 
     readonly List<Object> owned = new List<Object>();
     static Material baseMaterial;
@@ -99,7 +109,7 @@ public class TrackVisuals : MonoBehaviour
             wheelR = susp.wheelRadius;
             SetupTopRun();
             BuildModelWheels(model);
-            ctrlCount = topZ != null ? n + 10 + 4 * topZ.Length : n + 13;
+            ctrlCount = topZ != null ? n + 10 + 4 * topZ.Length : n + 10 + (wrapTop ? WrapSamples : topFractions.Length);
         }
         else
         {
@@ -126,6 +136,7 @@ public class TrackVisuals : MonoBehaviour
             linkMat.SetFloat("_Metallic", 0.6f);
             linkMat.enableInstancing = true;
             linkMatrices = new Matrix4x4[1023];
+            if (set.linkB != null) { bufA = new Matrix4x4[1023]; bufB = new Matrix4x4[1023]; }
             phaseLinks[0] = phaseLinks[1] = 0f;
             UpdateVisuals(0f);
             return;
@@ -167,8 +178,27 @@ public class TrackVisuals : MonoBehaviour
     void SetupTopRun()
     {
         topZ = null;
+        wrapTop = false;
         rollerR = TrackSet.RollerSize * (rig.road[0].r - thickness * 0.5f);
-        if (rig.topRollers == null || rig.topRollers.Length == 0) return;
+        if (rig.topRollers == null || rig.topRollers.Length == 0)
+        {
+            // катки выше прямой от верха ленивца к верху ведущего колеса — ветвь огибает их
+            float fz = rig.front.z, fy = rig.front.y + rig.front.r, rz = rig.rear.z, ry = rig.rear.y + rig.rear.r;
+            for (int k = 0; k < rig.road.Length && !wrapTop; k++)
+            {
+                float t = Mathf.Clamp01((rig.road[k].z - fz) / (rz - fz));
+                wrapTop = rig.road[k].y + rig.road[k].r > Mathf.Lerp(fy, ry, t) - rig.topSag * 4f * t * (1f - t) + WrapTrigger;
+            }
+            if (wrapTop)
+            {
+                int cap = 2 * 19 + rig.road.Length * 13;
+                wrapPts = new Vector2[cap];
+                wrapHull = new Vector2[cap];
+                wrapTag = new int[cap];
+                wrapHullTag = new int[cap];
+            }
+            return;
+        }
         topZ = (float[])rig.topRollers.Clone();
         System.Array.Sort(topZ);
         System.Array.Reverse(topZ);
@@ -222,8 +252,9 @@ public class TrackVisuals : MonoBehaviour
         steel.SetFloat("_Metallic", 0.5f);
         Material rubber = MakeMaterial(set.rubber);
         rubber.SetFloat("_Smoothness", 0.15f);
-        Material[] roadMats = { steel, rubber };
         Material[] steelMats = { steel };
+        // цельностальной каток (одна подсетка, М3) — без резины: лишний материал лёг бы вторым проходом поверх стали
+        Material[] roadMats = set.road.subMeshCount > 1 ? new Material[] { steel, rubber } : steelMats;
         float w = rig.beltWidth * 0.9f;
         float rRoad = rig.road[0].r - thickness * 0.5f;
         for (int side = 0; side < 2; side++)
@@ -259,16 +290,17 @@ public class TrackVisuals : MonoBehaviour
     // с упором хода; у крайних катков вместо упора — кронштейн и амортизатор. Под верхней ветвью — поддерживающие катки.
     void BuildSuspension(Transform model, float w, float rRoad, Material[] mats)
     {
-        suspR = rRoad;
+        suspR = Mathf.Min(rRoad, TrackSet.MaxSuspR);    // у крупных катков подвеска — в размер катка MaxSuspR
         suspW = w;
         float restY = susp.mountY - susp.RestExtension;
-        float a = TrackSet.ArmAngle * Mathf.Deg2Rad, len = TrackSet.ArmLength * rRoad;
+        float a = TrackSet.ArmAngle * Mathf.Deg2Rad, len = TrackSet.ArmLength * suspR;
         pivots = new Vector2[n];
         armDir = new float[n];
         for (int k = 0; k < n; k++)
         {
             // ось качания впереди катка; если она уходит под ленивец (короткий нос) — балансир разворачивается назад
-            armDir[k] = susp.wheelZ[k] + len * Mathf.Cos(a) > rig.front.z - rig.front.r ? -1f : 1f;
+            // (по полному размеру катка: у Мамонтов уменьшенный балансир впереди выходил кронштейном в проём между носами)
+            armDir[k] = susp.wheelZ[k] + TrackSet.ArmLength * rRoad * Mathf.Cos(a) > rig.front.z - rig.front.r ? -1f : 1f;
             pivots[k] = new Vector2(susp.wheelZ[k] + armDir[k] * len * Mathf.Cos(a), restY + len * Mathf.Sin(a));
         }
         arms = new Transform[2 * n];
@@ -293,6 +325,7 @@ public class TrackVisuals : MonoBehaviour
         // Поддерживающие катки — в промежутках между катками, касаются ленты снизу (не у дуги вверх, как у Мамонта М0)
         if (set.roller == null) return;
         rollerR = TrackSet.RollerSize * rRoad;
+        Material[] rollerMats = set.roller.subMeshCount > 1 ? mats : new Material[] { mats[0] };   // стальной каток без бандажа (М3)
         if (topZ != null)
         {
             // Катки, на которых лежит верхняя ветвь
@@ -303,14 +336,14 @@ public class TrackVisuals : MonoBehaviour
                 for (int side = 0; side < 2; side++)
                 {
                     int j = side * topZ.Length + i;
-                    rollers[j] = MakeMeshObject(model, "Return roller " + j, set.roller, mats, false, false);
+                    rollers[j] = MakeMeshObject(model, "Return roller " + j, set.roller, rollerMats, false, false);
                     rollers[j].localPosition = new Vector3((side == 0 ? -1f : 1f) * rig.beltX, topY - thickness * 0.5f - rollerR, topZ[i]);
                     rollers[j].localScale = new Vector3((side == 0 ? -1f : 1f) * set.roadSign * w, rollerR, rollerR);
                 }
             }
             return;
         }
-        if (rig.topSag < 0f) return;
+        if (rig.topSag < 0f || wrapTop) return;                                // ветвь на крупных катках — без поддерживающих
         int count = rig.returnRollers > 0 ? Mathf.Min(rig.returnRollers, n - 1) : (n >= 6 ? 3 : 2);
         rollers = new Transform[2 * count];
         rollerAngle = new float[2 * count];
@@ -326,7 +359,7 @@ public class TrackVisuals : MonoBehaviour
             for (int side = 0; side < 2; side++)
             {
                 int j = side * count + i;
-                rollers[j] = MakeMeshObject(model, "Return roller " + j, set.roller, mats, false, false);
+                rollers[j] = MakeMeshObject(model, "Return roller " + j, set.roller, rollerMats, false, false);
                 rollers[j].localPosition = new Vector3((side == 0 ? -1f : 1f) * rig.beltX, y, z);
                 rollers[j].localScale = new Vector3((side == 0 ? -1f : 1f) * set.roadSign * w, rollerR, rollerR);
             }
@@ -544,8 +577,27 @@ public class TrackVisuals : MonoBehaviour
                 layer = model.gameObject.layer,
                 worldBounds = new Bounds(model.position, Vector3.one * 10f)
             };
-            if (!RingTest.NoTracks) Graphics.RenderMeshInstanced(rp, set.link, 0, linkMatrices, linkCount);
+            if (!RingTest.NoTracks) DrawLinks(rp, linkMatrices, linkCount, null);
         }
+    }
+
+    // Траки одной или двумя сетками: у набора с чередованием (linkB) чётные — link, нечётные — linkB (на каждой ленте
+    // число траков чётное, поэтому чётность общего номера совпадает с номером на ленте)
+    void DrawLinks(RenderParams rp, Matrix4x4[] m, int count, bool[] odd)
+    {
+        if (set.linkB == null)
+        {
+            Graphics.RenderMeshInstanced(rp, set.link, 0, m, count);
+            return;
+        }
+        int a = 0, b = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (odd != null ? odd[i] : (i & 1) == 1) bufB[b++] = m[i];
+            else bufA[a++] = m[i];
+        }
+        if (a > 0) Graphics.RenderMeshInstanced(rp, set.link, 0, bufA, a);
+        if (b > 0) Graphics.RenderMeshInstanced(rp, set.linkB, 0, bufB, b);
     }
 
     // Катки, подвеска и лента по текущему положению подвески
@@ -585,7 +637,8 @@ public class TrackVisuals : MonoBehaviour
 
             if (arms != null) UpdateSuspension(side, speed, dt);
 
-            phaseLinks[side] = Mathf.Repeat(phaseLinks[side] + speed * dt / linkPitch, 1f);
+            // у набора с чередованием фаза идёт на два трака — при переходе через период узор не меняется местами
+            phaseLinks[side] = Mathf.Repeat(phaseLinks[side] + speed * dt / linkPitch, set != null && set.linkB != null ? 2f : 1f);
             UpdateBelt(side, sx * (rigMode ? rig.beltX : susp.trackX));
         }
         return true;
@@ -601,6 +654,7 @@ public class TrackVisuals : MonoBehaviour
         if (linkCount == 0) return;
         Matrix4x4 toLocal = model.worldToLocalMatrix;
         List<Matrix4x4> keep = new List<Matrix4x4>(linkCount);
+        List<bool> keepOdd = new List<bool>(linkCount);
         Material m = DebrisSpawner.Mat(set.linkSteel * 0.55f);
         int first = Random.value < 0.5f ? 0 : 1, flown = 0;
         for (int side = 0; side < 2; side++)
@@ -612,19 +666,22 @@ public class TrackVisuals : MonoBehaviour
             for (int i = 0; i < len; i++)
             {
                 Matrix4x4 mw = linkMatrices[s0 + i];
+                bool odd = set.linkB != null && ((s0 + i) & 1) == 1;
                 if ((i - gap0 + len) % len < gapLen && flown < 24)
                 {
                     Vector3 pos = mw.GetColumn(3);
                     Vector3 vel = baseVel + ((pos - center).normalized + Vector3.up * 0.8f + Random.insideUnitSphere * 0.5f).normalized * Random.Range(4f, 8f);
-                    DebrisSpawner.Spawn(set.link, pos, mw.rotation, mw.lossyScale, new Material[] { m }, vel, Random.insideUnitSphere * 10f,
+                    DebrisSpawner.Spawn(odd ? set.linkB : set.link, pos, mw.rotation, mw.lossyScale, new Material[] { m }, vel, Random.insideUnitSphere * 10f,
                         Random.Range(6f, 9f), false);
                     flown++;
                     continue;
                 }
                 keep.Add(toLocal * mw);
+                keepOdd.Add(odd);
             }
         }
         frozenLinks = keep.ToArray();
+        frozenOdd = keepOdd.ToArray();
     }
 
     void RenderFrozen()
@@ -640,7 +697,7 @@ public class TrackVisuals : MonoBehaviour
             layer = model.gameObject.layer,
             worldBounds = new Bounds(model.position, Vector3.one * 10f)
         };
-        if (!RingTest.NoTracks) Graphics.RenderMeshInstanced(rp, set.link, 0, linkMatrices, c);
+        if (!RingTest.NoTracks) DrawLinks(rp, linkMatrices, c, frozenOdd);
     }
 
     // Траки танка дальше LinkShadowDistance от камеры тень не отбрасывают: на таком расстоянии их тень — несколько пикселей
@@ -665,6 +722,8 @@ public class TrackVisuals : MonoBehaviour
             // Нижняя ветка: под опорными катками (с заднего на передний), радиусы берём из модели
             for (int k = 0; k < n; k++)
                 ctrl[c++] = new Vector2(susp.wheelZ[k], mountY - visExt[side * n + k] - rig.road[k].r);
+
+            if (wrapTop) return FillWrappedTop(side, c);
 
             // Передняя дуга вокруг направляющего колеса
             RigCircle f = rig.front;
@@ -743,6 +802,84 @@ public class TrackVisuals : MonoBehaviour
         return c;
     }
 
+    // Ветвь на крупных катках (wrapTop): верхняя выпуклая оболочка дуг ведущего колеса, катков (в текущем положении
+    // подвески, с зазором WrapGap над бандажом) и ленивца. Передняя дуга — от −60° до точки схода с ленивца, затем
+    // WrapSamples точек оболочки, задняя дуга — от точки схода с ведущего колеса до 240°.
+    int FillWrappedTop(int side, int c)
+    {
+        RigCircle f = rig.front, r = rig.rear;
+        int m = 0;
+        for (int a = 180; a >= 0; a -= 10)                                     // ведущее колесо, z по возрастанию
+        {
+            float ang = a * Mathf.Deg2Rad;
+            wrapPts[m] = new Vector2(r.z + r.r * Mathf.Cos(ang), r.y + r.r * Mathf.Sin(ang));
+            wrapTag[m++] = 1000 + a;
+        }
+        for (int k = 0; k < n; k++)
+        {
+            float R = rig.road[k].r + WrapGap;
+            Vector2 wc = new Vector2(susp.wheelZ[k], susp.mountY - visExt[side * n + k]);
+            for (int a = 180; a >= 0; a -= 15)
+            {
+                float ang = a * Mathf.Deg2Rad;
+                wrapPts[m] = wc + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * R;
+                wrapTag[m++] = 0;
+            }
+        }
+        for (int a = 180; a >= 0; a -= 10)                                     // ленивец
+        {
+            float ang = a * Mathf.Deg2Rad;
+            wrapPts[m] = new Vector2(f.z + f.r * Mathf.Cos(ang), f.y + f.r * Mathf.Sin(ang));
+            wrapTag[m++] = -1 - a;
+        }
+        for (int i = 1; i < m; i++)                                            // почти упорядочены — вставками
+        {
+            Vector2 p = wrapPts[i];
+            int tg = wrapTag[i], j = i - 1;
+            while (j >= 0 && wrapPts[j].x > p.x) { wrapPts[j + 1] = wrapPts[j]; wrapTag[j + 1] = wrapTag[j]; j--; }
+            wrapPts[j + 1] = p;
+            wrapTag[j + 1] = tg;
+        }
+        int h = 0;
+        for (int i = 0; i < m; i++)                                            // верхняя оболочка
+        {
+            Vector2 p = wrapPts[i];
+            while (h >= 2 && (wrapHull[h - 1].x - wrapHull[h - 2].x) * (p.y - wrapHull[h - 2].y)
+                           - (wrapHull[h - 1].y - wrapHull[h - 2].y) * (p.x - wrapHull[h - 2].x) >= 0f) h--;
+            wrapHull[h] = p;
+            wrapHullTag[h++] = wrapTag[i];
+        }
+        int ir = 0;                                                            // сход с ведущего колеса
+        while (ir + 1 < h && wrapHullTag[ir + 1] >= 1000) ir++;
+        int jf = h - 1;                                                        // сход с ленивца
+        while (jf - 1 > ir && wrapHullTag[jf - 1] < 0) jf--;
+        if (jf <= ir) { ir = 0; jf = h - 1; }
+        float angR = wrapHullTag[ir] >= 1000 ? Mathf.Clamp(wrapHullTag[ir] - 1000, 0f, 200f) : 90f;
+        float angF = wrapHullTag[jf] < 0 ? Mathf.Clamp(-1 - wrapHullTag[jf], -40f, 180f) : 90f;
+
+        for (int i = 0; i < 5; i++)                                            // передняя дуга
+        {
+            float ang = Mathf.Lerp(-60f, angF, i / 4f) * Mathf.Deg2Rad;
+            ctrl[c++] = new Vector2(f.z + f.r * Mathf.Cos(ang), f.y + f.r * Mathf.Sin(ang));
+        }
+        float zf = wrapHull[jf].x, zr = wrapHull[ir].x;
+        int seg = jf;
+        for (int i = 1; i <= WrapSamples; i++)                                 // ветвь спереди назад
+        {
+            float z = Mathf.Lerp(zf, zr, i / (WrapSamples + 1f));
+            while (seg - 1 > ir && wrapHull[seg - 1].x > z) seg--;
+            Vector2 a = wrapHull[seg - 1], b = wrapHull[seg];
+            float t = (z - a.x) / Mathf.Max(b.x - a.x, 1e-5f);
+            ctrl[c++] = new Vector2(z, Mathf.Lerp(a.y, b.y, t));
+        }
+        for (int i = 0; i < 5; i++)                                            // задняя дуга
+        {
+            float ang = Mathf.Lerp(angR, 240f, i / 4f) * Mathf.Deg2Rad;
+            ctrl[c++] = new Vector2(r.z + r.r * Mathf.Cos(ang), r.y + r.r * Mathf.Sin(ang));
+        }
+        return c;
+    }
+
     void UpdateBelt(int side, float x)
     {
         if (side == 0) linkCount = 0;
@@ -759,6 +896,7 @@ public class TrackVisuals : MonoBehaviour
             arc[k] = arc[k - 1] + Vector2.Distance(c2[k - 1], c2[k % K]);
         float perimeter = arc[K];
         int links = Mathf.Max(8, Mathf.RoundToInt(perimeter / linkPitch));
+        if (set != null && set.linkB != null) links = Mathf.Max(8, 2 * Mathf.RoundToInt(perimeter / linkPitch * 0.5f));   // чётное — узор замкнут
         float pitch = perimeter / links;
 
         if (set != null)

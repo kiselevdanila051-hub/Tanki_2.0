@@ -50,10 +50,10 @@
   "r": 0.142
  },
  "topSag": 0.02,
- "hullBottomY": -0.424,
- "hullTopY": 0.5735,
- "hullHalfWidth": 1.1365,
- "hullHalfLength": 1.8821,
+ "hullBottomY": -0.3659,
+ "hullTopY": 0.572,
+ "hullHalfWidth": 1.1337,
+ "hullHalfLength": 1.881,
  "turretMount": {
   "x": 0.0,
   "y": 0.572,

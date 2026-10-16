@@ -1,5 +1,6 @@
 {
  "modelName": "Dictator_M2",
+ "destructible": true,
  "modelScale": 1.2,
  "scale": 0.0014693167484307844,
  "stockWheels": true,
@@ -45,10 +46,10 @@
   "r": 0.1249
  },
  "topSag": 0.02,
- "hullBottomY": -0.2909,
- "hullTopY": 0.4344,
- "hullHalfWidth": 0.7611,
- "hullHalfLength": 1.4061,
+ "hullBottomY": -0.29,
+ "hullTopY": 0.4349,
+ "hullHalfWidth": 0.819,
+ "hullHalfLength": 1.448,
  "turretMount": {
   "x": 0.0,
   "y": 0.4349,

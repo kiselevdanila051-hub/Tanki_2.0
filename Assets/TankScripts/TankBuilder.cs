@@ -1,8 +1,10 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 
 // Собирает танк из корпуса и пушки: меняет характеристики и заново строит внешний вид.
 // Если для корпуса или пушки есть модель (ModelLibrary), ставится она; иначе — заглушка из кубов.
-// Катки и гусеницы строит TrackVisuals. Ствол сидит на «шарнире» (GunPivot) — его наклоняет автонаводка.
+// Катки и гусеницы строит TrackVisuals. Ствол сидит на «шарнире» (GunPivot) — его наклоняет автонаводка; подвижные части
+// отката (RecoilModel, у моделей с recoil.obj) при выстреле двигает и выбрасывает гильзы TankShooter.
 public class TankBuilder : MonoBehaviour
 {
     public HullType hullType = HullType.Hunter;
@@ -100,6 +102,7 @@ public class TankBuilder : MonoBehaviour
         GameObject pivot = new GameObject("GunPivot");
         pivot.transform.SetParent(turret.transform, false);
         Vector3 muzzlePos;
+        List<Transform> recoilParts = new List<Transform>();
 
         if (gm != null)
         {
@@ -107,6 +110,9 @@ public class TankBuilder : MonoBehaviour
             pivot.transform.localPosition = gm.info.gunPivot != null
                 ? new Vector3(gm.info.gunPivot.x, gm.info.gunPivot.y, gm.info.gunPivot.z) : Vector3.zero;
             if (gm.barrel != null) MeshPart("BarrelModel", pivot.transform, Vector3.zero, gm.barrel, gm.barrelMaterial);
+            // подвижные части отката (труба, кожух, тормоз) — отдельные меши от оси качания, их двигает TankShooter
+            foreach (Mesh rm in new[] { gm.recoil, gm.recoil2 })
+                if (rm != null) recoilParts.Add(MeshPart("RecoilModel", pivot.transform, Vector3.zero, rm, gm.barrelMaterial).transform);
             muzzlePos = new Vector3(gm.info.muzzle.x, gm.info.muzzle.y, gm.info.muzzle.z);
         }
         else
@@ -152,6 +158,12 @@ public class TankBuilder : MonoBehaviour
         shooter.gunPivot = pivot.transform;
         shooter.muzzleSide = gm != null ? gm.info.muzzleSide : 0f;
         shooter.laserEmitter = laser;
+        // Откат и гильзы: окно выброса и направление — в координатах файла OBJ, x зеркалится, как у лазера
+        Vector3 ejectAt = Vector3.zero, ejectDir = Vector3.right;
+        if (gm != null && gm.info.eject != null) ejectAt = new Vector3(-gm.info.eject.x, gm.info.eject.y, gm.info.eject.z);
+        if (gm != null && gm.info.ejectDir != null) ejectDir = new Vector3(-gm.info.ejectDir.x, gm.info.ejectDir.y, gm.info.ejectDir.z);
+        shooter.SetRecoil(recoilParts.ToArray(), gm != null ? gm.info.recoilDist : 0f, ejectAt, ejectDir,
+                          gm != null && gm.info.eject != null ? gm.info.casing : 0f, CasingOf(gunType));
 
         // Скруглённая форма башни (капсула вдоль башни по её габаритам) — включается, только когда танк перевёрнут: на плоской
         // крыше общей коробки (она охватывает и башню) танк лежал ровно, а на башне ему не удержаться — заваливается набок
@@ -210,6 +222,14 @@ public class TankBuilder : MonoBehaviour
         go.transform.localScale = scale;
         go.GetComponent<Renderer>().material.color = color;
         return go;
+    }
+
+    // Что вылетает из окна выброса: пороховые — широкая гильза, Шафт — длинная бутылочная, энергетические — ячейка
+    static CasingKind CasingOf(GunType g)
+    {
+        if (g == GunType.Smoky || g == GunType.Thunder) return CasingKind.Shell;
+        if (g == GunType.Shaft) return CasingKind.Rifle;
+        return CasingKind.Cell;
     }
 
     // Поправка размера конкретной пушки на конкретном корпусе (сверх gunScale корпуса)

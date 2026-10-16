@@ -1,23 +1,41 @@
 {
- "modelName": "Twins_M3",
- "scale": 0.0011573871604673785,
- "height": 0.4575,
- "gunPivot": {
-  "x": 0,
-  "y": 0.0769,
-  "z": 0.6852
- },
- "muzzle": {
-  "x": 0.0,
-  "y": 0.0,
-  "z": 0.7741
- },
- "muzzleSide": 0.3171,
- "color": [
-  0.42,
-  0.47,
-  0.3
- ],
- "smoothness": 0.25,
- "metallic": 0.15
+    "modelName":  "Twins_M3",
+    "scale":  0.0011573871604673785,
+    "height":  0.46,
+    "gunPivot":  {
+                     "x":  0.0,
+                     "y":  0.0769,
+                     "z":  0.6852
+                 },
+    "muzzle":  {
+                   "x":  0.0,
+                   "y":  0.00010000000000000286,
+                   "z":  0.7738
+               },
+    "muzzleSide":  0.317,
+    "color":  [
+                  0.42,
+                  0.47,
+                  0.3
+              ],
+    "smoothness":  0.25,
+    "metallic":  0.15,
+    "recoilDist":  0.045,
+    "eject":  {
+                  "x":  0.427,
+                  "y":  0.1081,
+                  "z":  0.0648
+              },
+    "ejectDir":  {
+                     "x":  1.0,
+                     "y":  0.7,
+                     "z":  -0.3
+                 },
+    "casing":  0.06,
+    "laser":  {
+                  "x":  0.317,
+                  "y":  0.1781,
+                  "z":  0.0428
+              },
+    "laserOnBarrel":  true
 }

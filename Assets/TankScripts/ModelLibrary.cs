@@ -160,6 +160,8 @@ public static class ModelLibrary
         m.info = JsonUtility.FromJson<GunInfo>(json.text);
         m.turret = turret;
         m.barrel = Resources.Load<Mesh>(folder + "/barrel");
+        m.recoil = Resources.Load<Mesh>(folder + "/recoil");
+        m.recoil2 = Resources.Load<Mesh>(folder + "/recoil2");
         m.material = MakeMaterial(folder, m.info.color, m.info.smoothness, m.info.metallic);
         float[] dark = m.info.color != null && m.info.color.Length >= 3
             ? new float[] { m.info.color[0] * 0.75f, m.info.color[1] * 0.75f, m.info.color[2] * 0.75f } : null;

@@ -25,5 +25,17 @@
                   "z":  0.1158
               },
     "laserOnBarrel":  true,
-    "destructible":  true
+    "destructible":  true,
+    "recoilDist":  0.06,
+    "eject":  {
+                  "x":  0.1828,
+                  "y":  -0.0175,
+                  "z":  0.0656
+              },
+    "ejectDir":  {
+                     "x":  0.75,
+                     "y":  0.55,
+                     "z":  0.55
+                 },
+    "casing":  0.08
 }

@@ -30,7 +30,7 @@ public class Garage : MonoBehaviour
     Camera cam;
     bool visible, uiHidden, settingsOpen, previewDirty, battleRequest;
     int section = 1;                      // 0 профиль, 1 гараж, 2 битвы
-    int settingsTab;                      // настройки: 0 графика, 1 наводка
+    int settingsTab;                      // настройки: 0 графика, 1 наводка, 2 свечение
     int category;                         // 0 корпуса, 1 пушки, 2 краски, 3 припасы
     Vector2 listScroll, descScroll, settingsScroll;
     string toast;
@@ -51,7 +51,7 @@ public class Garage : MonoBehaviour
     static readonly string[] SectionNames = { "ПРОФИЛЬ", "ГАРАЖ", "БИТВЫ" };
     static readonly string[] SectionIcons = { "profile", "garage", "battles" };
     static readonly string[] CategoryNames = { "КОРПУСА", "ПУШКИ", "КРАСКИ", "ПРИПАСЫ" };
-    static readonly string[] SettingsTabs = { "ГРАФИКА", "НАВОДКА" };
+    static readonly string[] SettingsTabs = { "ГРАФИКА", "НАВОДКА", "СВЕЧЕНИЕ" };
     static readonly string[] Supplies = { "Ремкомплект", "Двойная броня", "Двойной урон", "Ускорение", "Мина" };
     const int Balance = 125000;                                                          // заглушка: валюты ещё нет
     const string Cur = " €$";                                                          // евро-доллары
@@ -879,6 +879,7 @@ public class Garage : MonoBehaviour
         if (tab != settingsTab) { settingsTab = tab; settingsScroll = Vector2.zero; }
         Rect area = new Rect(r.x, r.y + 90f, r.width, r.height - 90f);
         if (settingsTab == 1) { AimSettings(area); return; }
+        if (settingsTab == 2) { GlowSettings(area); return; }
 
         float lw = 220f, viewH = 640f;
         settingsScroll = GUI.BeginScrollView(area, settingsScroll, new Rect(0f, 0f, area.width - 14f, viewH), false, false, GUIStyle.none, GUI.skin.verticalScrollbar);
@@ -956,6 +957,49 @@ public class Garage : MonoBehaviour
             GraphicsPrefs.Apply(false);
             GraphicsPrefs.Save();
         }
+    }
+
+    // ---------- Свечение (GlowPrefs): цвет и яркость светящихся деталей всех танков ----------
+    void GlowSettings(Rect area)
+    {
+        float w = area.width - 24f, y = area.y;
+        GUIStyle hint = Txt(14, DimCol, TextAnchor.UpperLeft, true);
+        Text(new Rect(area.x, y, w, 26f), "Цвет свечения", sHead);
+        y += 30f;
+        int n = GlowPrefs.Palette.Length, cols = 5;
+        float gap = 6f, bw = (w - gap * (cols - 1)) / cols, bh = 40f;
+        for (int i = 0; i < n; i++)
+        {
+            Rect b = new Rect(area.x + (i % cols) * (bw + gap), y + (i / cols) * (bh + gap), bw, bh);
+            bool sel = i == GlowPrefs.Choice;
+            if (GUI.Button(b, GUIContent.none, sel ? bgGreySel : bgGrey)) GlowPrefs.Choice = i;
+            Rect sw = new Rect(b.x + 6f, b.y + 6f, 26f, b.height - 12f);
+            if (i == 0)
+            {
+                // «как у модели»: три полосы — оранжевая, зелёная, голубая
+                for (int k = 0; k < 3; k++)
+                {
+                    GUI.color = GlowPrefs.Swatch(k == 0 ? 1 : k == 1 ? 4 : 6);
+                    GUI.DrawTexture(new Rect(sw.x, sw.y + k * sw.height / 3f, sw.width, sw.height / 3f), Texture2D.whiteTexture);
+                }
+            }
+            else
+            {
+                GUI.color = GlowPrefs.Swatch(i);
+                GUI.DrawTexture(sw, Texture2D.whiteTexture);
+            }
+            GUI.color = Color.white;
+            Text(new Rect(sw.xMax + 6f, b.y, b.xMax - sw.xMax - 10f, b.height), GlowPrefs.Names[i], sel ? sTabSel : sBtnText, 0.5f);
+        }
+        y += ((n + cols - 1) / cols) * (bh + gap) + 10f;
+        float lw = 220f;
+        float br = Mathf.Round(SliderRow(new Rect(area.x, y, w, 34f), lw, "Яркость", GlowPrefs.Brightness, 0f, GlowPrefs.BrightnessMax,
+            GlowPrefs.Brightness <= 0f ? "выкл" : Mathf.RoundToInt(GlowPrefs.Brightness * 100f) + "%") * 20f) / 20f;
+        if (br != GlowPrefs.Brightness) GlowPrefs.Brightness = br;
+        y += 46f;
+        gc.text = "Один цвет для всех светящихся деталей танков — огней, швов, камер, каналов дул — и для светящихся гильз. "
+                + "«Как у модели» — у каждой пушки и корпуса свой цвет. Яркость 0 — свечение выключено. Танк на подиуме перекрашивается сразу.";
+        GUI.Label(new Rect(area.x, y, w, 80f), gc, hint);
     }
 
     // ---------- Настройки наводки (AimPrefs) ----------

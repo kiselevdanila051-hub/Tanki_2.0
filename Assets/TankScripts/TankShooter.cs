@@ -366,7 +366,7 @@ public class TankShooter : MonoBehaviour
         Camera cam = Camera.main;
         if (cam != null && (pos - cam.transform.position).sqrMagnitude > 80f * 80f) return;   // вдали гильз не видно
         float k = carrier.lossyScale.z;
-        ShellFx.Eject(carrier, lp, ld, casingLength * k, casingKind, casingFuture, casingGlow, rb, ejectPush * k, lf);
+        ShellFx.Eject(carrier, lp, ld, casingLength * k, casingKind, casingFuture, GlowPrefs.Resolve(casingGlow), rb, ejectPush * k, lf);
     }
 
     // Наклон башни (её «вперёд») к горизонту, градусы (+ нос башни вверх)

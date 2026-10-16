@@ -96,6 +96,7 @@ public partial class TankDamage : MonoBehaviour
     }
 
     readonly List<Part> parts = new List<Part>();
+    int glowVersion;                      // GlowPrefs.Version, с которым покрашено свечение
     readonly List<Renderer> wheels = new List<Renderer>();
     readonly List<int> tmp = new List<int>();
     readonly List<GameObject> outlines = new List<GameObject>();
@@ -204,6 +205,7 @@ public partial class TankDamage : MonoBehaviour
     void ApplyLook(Part p, TankBuilder builder)
     {
         bool hull = p.name == "Hull";
+        glowVersion = GlowPrefs.Version;
         int mk = builder != null ? (hull ? builder.hullMk : builder.gunMk) : 0;
         float weather = ByMk(weatherByMk, mk);
         float wearMul = builder != null && builder.wear >= 0f ? builder.wear : Paints.Wear;   // у ботов — свой, случайный
@@ -218,10 +220,24 @@ public partial class TankDamage : MonoBehaviour
             // вставки — на корпусе (по модификации корпуса) и на пушке (по модификации пушки); башня — в цвет корпуса,
             // ствол с разметкой вставок тоже (металлические части ствола — вставки), без разметки остаётся тёмным
             SetInlay(m, mk);
-            if (m.HasProperty(GlowColorId)) m.SetColor(GlowColorId, GlowOf(builder, hull));
+            if (m.HasProperty(GlowColorId)) m.SetColor(GlowColorId, GlowPrefs.Resolve(GlowOf(builder, hull)));
             if (hull || p.name == "TurretModel" || p.name == "TurretMechModel" || ((p.name == "BarrelModel" || p.name == "RecoilModel" || p.name == "EjectorModel") && p.inlay)) m.SetColor("_BaseColor", hullColor);
             if (m.HasProperty("_PaintOn")) Paints.Apply(m, builder != null ? builder.paint : 0, m.GetColor("_BaseColor"));
         }
+    }
+
+    // Цвет свечения поменяли в настройках — перекрасить светящиеся детали
+    void RefreshGlow()
+    {
+        glowVersion = GlowPrefs.Version;
+        TankBuilder builder = GetComponent<TankBuilder>();
+        foreach (Part p in parts)
+        {
+            Color g = GlowPrefs.Resolve(GlowOf(builder, p.name == "Hull"));
+            foreach (Material m in p.mats)
+                if (m != null && m.HasProperty(GlowColorId)) m.SetColor(GlowColorId, g);
+        }
+        ReleaseBitMaterials();
     }
 
     // Применить ползунки износа заново (гараж: танк на подиуме перекрашивается сразу)
@@ -478,6 +494,7 @@ public partial class TankDamage : MonoBehaviour
     // ---------- Каждый кадр ----------
     void Update()
     {
+        if (glowVersion != GlowPrefs.Version && parts.Count > 0) RefreshGlow();
         if (health == null) return;
         float ratio = health.maxHealth > 0f ? health.Current / health.maxHealth : 1f;
 

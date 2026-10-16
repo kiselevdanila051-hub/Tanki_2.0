@@ -27,19 +27,76 @@
     "laserOnBarrel": true,
     "recoilDist": 0.05,
     "eject": {
-        "x": 0.1664,
-        "y": 0.0498,
-        "z": 0.1595
+        "x": 0.0,
+        "y": 0.21,
+        "z": -0.775
     },
     "ejectDir": {
-        "x": 1.0,
-        "y": 0.7,
-        "z": -0.3
+        "x": 0.0,
+        "y": 0.0,
+        "z": -1.0
     },
     "casing": 0.13,
     "glow": [
         3.0,
         1.1,
         0.25
+    ],
+    "ejectFly": {
+        "x": 0.0,
+        "y": 0.45,
+        "z": -1.0
+    },
+    "ejectOnTurret": true,
+    "ejectPush": 0.3,
+    "mechanism": [
+        {
+            "mesh": "eject_lid",
+            "onTurret": true,
+            "hinge": {
+                "x": 0.0,
+                "y": 0.278,
+                "z": -0.85
+            },
+            "axis": {
+                "x": 1.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "angle": 75.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": -0.08,
+            "open": 0.08,
+            "hold": 0.3,
+            "close": 0.2
+        },
+        {
+            "mesh": "eject_rammer",
+            "onTurret": true,
+            "hinge": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "axis": {
+                "x": 1.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "angle": 0.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": -0.1
+            },
+            "lead": 0.0,
+            "open": 0.07,
+            "hold": 0.05,
+            "close": 0.15
+        }
     ]
 }

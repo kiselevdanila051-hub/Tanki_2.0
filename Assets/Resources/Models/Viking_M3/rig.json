@@ -74,5 +74,10 @@
         0.33
     ],
     "smoothness": 0.25,
-    "metallic": 0.1
+    "metallic": 0.1,
+    "glow": [
+        3.0,
+        1.1,
+        0.25
+    ]
 }

@@ -32,7 +32,8 @@ public class TankShooter : MonoBehaviour
     float recoilDist, casingLength;
     Vector3 ejectLocal, ejectDirLocal;
     CasingKind casingKind;
-    bool recoilActive, ejectPending, casingFuture;
+    bool recoilActive, ejectPending;
+    int casingMk;                                 // модификация пушки: у каждого поколения своя гильза
     float ejectTime, ejectSign, ejectPush;
     Vector3 ejectFlyLocal;
     Color casingGlow;
@@ -192,10 +193,10 @@ public class TankShooter : MonoBehaviour
     // ---------- Откат и гильзы ----------
     // parts — подвижные части (у Твинса по одной на ствол: какая откатывается — по стороне дула), dist — ход, м модели;
     // eject / ejectDir — окно выброса и направление в осях ствольной группы (уже с отражением x), casing — длина гильзы;
-    // future — гильза М3 (композит, хром, свечение), glow — цвет её светящихся частей; carrier — башня, если окно выброса
+    // mk — модификация пушки (у каждого поколения своя гильза), glow — цвет её светящихся частей; carrier — башня, если окно выброса
     // на ней (null — на ствольной группе), push — ход выталкивания гильзы из окна (0 — по её радиусу)
     public void SetRecoil(Transform[] parts, float dist, Vector3 eject, Vector3 ejectDir, float casing, CasingKind kind,
-                          bool future, Color glow, Transform carrier = null, float push = 0f, Vector3 fly = default)
+                          int mk, Color glow, Transform carrier = null, float push = 0f, Vector3 fly = default)
     {
         recoilParts = parts != null && parts.Length > 0 ? parts : null;
         int n = recoilParts != null ? recoilParts.Length : 0;
@@ -213,7 +214,7 @@ public class TankShooter : MonoBehaviour
         ejectDirLocal = ejectDir.sqrMagnitude > 1e-6f ? ejectDir.normalized : Vector3.right;
         casingLength = casing;
         casingKind = kind;
-        casingFuture = future;
+        casingMk = mk;
         casingGlow = glow;
         ejectCarrier = carrier;
         ejectPush = push;
@@ -366,7 +367,7 @@ public class TankShooter : MonoBehaviour
         Camera cam = Camera.main;
         if (cam != null && (pos - cam.transform.position).sqrMagnitude > 80f * 80f) return;   // вдали гильз не видно
         float k = carrier.lossyScale.z;
-        ShellFx.Eject(carrier, lp, ld, casingLength * k, casingKind, casingFuture, GlowPrefs.Resolve(casingGlow), rb, ejectPush * k, lf);
+        ShellFx.Eject(carrier, lp, ld, casingLength * k, casingKind, casingMk, GlowPrefs.Resolve(casingGlow), rb, ejectPush * k, lf);
     }
 
     // Наклон башни (её «вперёд») к горизонту, градусы (+ нос башни вверх)

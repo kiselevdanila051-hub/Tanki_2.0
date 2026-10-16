@@ -2,7 +2,8 @@
 using UnityEngine;
 
 // Повреждения танка: работает с любой моделью корпуса и пушки (и с заглушками из кубов), берёт детали, которые
-// построил TankBuilder: Hull, TurretModel / Turret Body, BarrelModel, RecoilModel (подвижные части отката — как ствол).
+// построил TankBuilder: Hull, TurretModel / Turret Body, BarrelModel, RecoilModel и EjectorModel (подвижные части отката
+// и шторки окна выброса — как ствол).
 // Внешний вид — износ, заводской цвет, вставки
 // и краска (шейдер Tanks/DamageLit).
 // Модификации до destructibleMaxMk (корпус — по модификации корпуса, башня и ствол — пушки) разрушаются по деталям
@@ -43,6 +44,11 @@ public partial class TankDamage : MonoBehaviour
     public Color inlayDarkMetal = new Color(0.13f, 0.135f, 0.145f);
     public Color inlayMidMetal = new Color(0.37f, 0.38f, 0.40f);
     public Color inlayGunMetal = new Color(0.27f, 0.28f, 0.30f);
+
+    // Светящиеся детали (метка u + 6, шейдер Tanks/DamageLit): цвет — glow из info.json пушки / rig.json корпуса,
+    // без него — этот (HDR)
+    public Color defaultGlow = new Color(0.4f, 1.6f, 3.2f);
+    static readonly int GlowColorId = Shader.PropertyToID("_GlowColor");
 
     // Разрушение по деталям — у модификаций до этой включительно
     public int destructibleMaxMk = 1;
@@ -170,7 +176,7 @@ public partial class TankDamage : MonoBehaviour
 
             bool hull = n == "Hull";
             bool turret = n == "TurretModel" || n == "Turret Body";
-            bool barrel = n == "BarrelModel" || n == "Barrel" || n == "RecoilModel";   // RecoilModel — подвижные части отката
+            bool barrel = n == "BarrelModel" || n == "Barrel" || n == "RecoilModel" || n == "EjectorModel";   // подвижные части — как ствол
             if (!hull && !turret && !barrel) continue;   // гусеницы, метка — без повреждений
 
             Part p = MakePart(mf, r, n);
@@ -212,7 +218,8 @@ public partial class TankDamage : MonoBehaviour
             // вставки — на корпусе (по модификации корпуса) и на пушке (по модификации пушки); башня — в цвет корпуса,
             // ствол с разметкой вставок тоже (металлические части ствола — вставки), без разметки остаётся тёмным
             SetInlay(m, mk);
-            if (hull || p.name == "TurretModel" || ((p.name == "BarrelModel" || p.name == "RecoilModel") && p.inlay)) m.SetColor("_BaseColor", hullColor);
+            if (m.HasProperty(GlowColorId)) m.SetColor(GlowColorId, GlowOf(builder, hull));
+            if (hull || p.name == "TurretModel" || ((p.name == "BarrelModel" || p.name == "RecoilModel" || p.name == "EjectorModel") && p.inlay)) m.SetColor("_BaseColor", hullColor);
             if (m.HasProperty("_PaintOn")) Paints.Apply(m, builder != null ? builder.paint : 0, m.GetColor("_BaseColor"));
         }
     }
@@ -233,6 +240,26 @@ public partial class TankDamage : MonoBehaviour
         m.SetColor("_MetalColor", mk <= 0 ? inlayDarkMetal : mk == 1 ? inlayMidMetal : inlayGunMetal);
         m.SetFloat("_MetalMetallic", mk <= 0 ? 0.8f : mk == 1 ? 0.82f : 0.65f);
         m.SetFloat("_MetalSmooth", mk <= 0 ? 0.38f : mk == 1 ? 0.46f : 0.5f);
+    }
+
+    // Цвет светящихся деталей корпуса (rig.json) или пушки (info.json)
+    Color GlowOf(TankBuilder builder, bool hull)
+    {
+        float[] g = null;
+        if (builder != null)
+        {
+            if (hull)
+            {
+                HullModel hm = ModelLibrary.GetHull(builder.hullType, builder.hullMk);
+                if (hm != null && hm.rig != null) g = hm.rig.glow;
+            }
+            else
+            {
+                GunModel gm = ModelLibrary.GetGun(builder.gunType, builder.gunMk);
+                if (gm != null && gm.info != null) g = gm.info.glow;
+            }
+        }
+        return g != null && g.Length >= 3 ? new Color(g[0], g[1], g[2]) : defaultGlow;
     }
 
     // Корпус старше destructibleMaxMk, но собранный под разрушение (rig.json: "destructible": true — Хорнет М2)

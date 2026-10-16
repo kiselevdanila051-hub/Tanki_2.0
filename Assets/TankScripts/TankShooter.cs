@@ -7,8 +7,8 @@ using UnityEngine;
 //   Cone / Beam — потоковые пушки на запасе энергии (Огнемёт, Фриз, Изида);
 //   Sniper — Шафт: выстрел навскидку или прицел с накоплением заряда.
 // Видимые выстрелы: плазмоиды, трассеры, луч Рельсы с зарядкой, росчерк Шафта — ShotFx; струи и дуга Изиды — StreamFx;
-// луч прицела Шафта — здесь (UpdateScopeLaser). Откат подвижных частей ствола и выброс гильз — Kick / UpdateRecoil
-// (гильзы летят в ShellFx).
+// луч прицела Шафта — здесь (UpdateScopeLaser). Откат подвижных частей ствола, шторка окна выброса и выброс гильз —
+// Kick / UpdateRecoil (гильзы — ShellFx: выдвигаются из окна, дальше летят по физике).
 // Обычно работает автонаводка (AutoAim): ствол сам наклоняется к цели в пределах своих углов. При ручной наводке игрока
 // (manualAim, выставляет PlayerInput по AimPrefs) ствол наклоняет мышь (TankInput.AimPitch), выстрел идёт вдоль ствола.
 public class TankShooter : MonoBehaviour
@@ -32,9 +32,20 @@ public class TankShooter : MonoBehaviour
     float recoilDist, casingLength;
     Vector3 ejectLocal, ejectDirLocal;
     CasingKind casingKind;
-    bool recoilActive, ejectPending;
+    bool recoilActive, ejectPending, casingFuture;
     float ejectTime, ejectSign;
+    Color casingGlow;
     const float KickBack = 0.045f, KickHold = 0.03f, KickReturn = 0.42f;   // фазы отката, с
+
+    // Шторки окна выброса (ejector.obj / ejector2.obj, SetEjector): петля — точка поворота, шторка поворачивается вокруг
+    // оси на ejectorAngle и сдвигается на ejectorSlide; открывается перед выбросом гильзы, закрывается после
+    Transform[] ejectorParts;
+    Vector3[] ejectorRest;
+    float[] ejectorSide, doorStart;
+    Vector3 ejectorAxis, ejectorSlide;
+    float ejectorAngle;
+    bool doorActive;
+    const float DoorLead = 0.06f, DoorHold = 0.1f, DoorClose = 0.16f;   // фазы шторки, с
 
     public bool IsScoping { get; private set; }
     public float Charge01 { get; private set; }
@@ -181,8 +192,10 @@ public class TankShooter : MonoBehaviour
 
     // ---------- Откат и гильзы ----------
     // parts — подвижные части (у Твинса по одной на ствол: какая откатывается — по стороне дула), dist — ход, м модели;
-    // eject / ejectDir — окно выброса и направление в осях ствольной группы (уже с отражением x), casing — длина гильзы
-    public void SetRecoil(Transform[] parts, float dist, Vector3 eject, Vector3 ejectDir, float casing, CasingKind kind)
+    // eject / ejectDir — окно выброса и направление в осях ствольной группы (уже с отражением x), casing — длина гильзы;
+    // future — гильза М3 (композит, хром, свечение), glow — цвет её светящихся частей
+    public void SetRecoil(Transform[] parts, float dist, Vector3 eject, Vector3 ejectDir, float casing, CasingKind kind,
+                          bool future, Color glow)
     {
         recoilParts = parts != null && parts.Length > 0 ? parts : null;
         int n = recoilParts != null ? recoilParts.Length : 0;
@@ -200,7 +213,47 @@ public class TankShooter : MonoBehaviour
         ejectDirLocal = ejectDir.sqrMagnitude > 1e-6f ? ejectDir.normalized : Vector3.right;
         casingLength = casing;
         casingKind = kind;
+        casingFuture = future;
+        casingGlow = glow;
         recoilActive = ejectPending = false;
+        ejectorParts = null;
+        doorActive = false;
+    }
+
+    // Шторки окна выброса: hinges — петли (дочерняя деталь — сама шторка), axis / angle — поворот при открытии,
+    // slide — сдвиг (в осях ствольной группы, уже с отражением x). У Твинса шторка своя у каждого ствола (по стороне сетки)
+    public void SetEjector(Transform[] hinges, Vector3 axis, float angle, Vector3 slide)
+    {
+        ejectorParts = hinges != null && hinges.Length > 0 ? hinges : null;
+        int n = ejectorParts != null ? ejectorParts.Length : 0;
+        ejectorRest = new Vector3[n];
+        ejectorSide = new float[n];
+        doorStart = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            ejectorRest[i] = ejectorParts[i].localPosition;
+            MeshFilter mf = ejectorParts[i].GetComponentInChildren<MeshFilter>();
+            ejectorSide[i] = mf != null && mf.sharedMesh != null
+                ? Mathf.Sign(mf.transform.localPosition.x + mf.sharedMesh.bounds.center.x + ejectorParts[i].localPosition.x) : 0f;
+            doorStart[i] = -10f;
+        }
+        ejectorAxis = axis.sqrMagnitude > 1e-6f ? axis.normalized : Vector3.right;
+        ejectorAngle = angle;
+        ejectorSlide = slide;
+        doorActive = false;
+    }
+
+    // Открытость шторки 0..1 по времени от начала открытия: открывается за DoorLead, держится, пока гильза выходит,
+    // закрывается за DoorClose
+    static float DoorCurve(float t)
+    {
+        if (t <= 0f) return 0f;
+        if (t < DoorLead) { float k = t / DoorLead; return k * k * (3f - 2f * k); }
+        t -= DoorLead + ShellFx.PushTime + DoorHold;
+        if (t < 0f) return 1f;
+        if (t >= DoorClose) return 0f;
+        float r = t / DoorClose;
+        return 1f - r * r * (3f - 2f * r);
     }
 
     // Выстрел: откат (power — доля хода) и гильза. Вызывается после выбора ствола (Твинс)
@@ -220,8 +273,18 @@ public class TankShooter : MonoBehaviour
         if (casingLength > 0f)
         {
             ejectPending = true;
-            ejectTime = Time.time + (casingKind == CasingKind.Rifle ? 0.32f : casingKind == CasingKind.Cell ? 0.16f : 0.11f);
+            ejectTime = Time.time + ShellFx.EjectDelay(casingKind);
             ejectSign = side;
+            // шторка окна выброса у выстрелившего ствола открывается чуть раньше выброса
+            if (ejectorParts != null)
+            {
+                for (int i = 0; i < ejectorParts.Length; i++)
+                {
+                    if (ejectorParts[i] == null || (side != 0f && ejectorParts.Length > 1 && ejectorSide[i] != side)) continue;
+                    doorStart[i] = ejectTime - DoorLead;
+                }
+                doorActive = true;
+            }
         }
     }
 
@@ -252,6 +315,20 @@ public class TankShooter : MonoBehaviour
             }
             recoilActive = any;
         }
+        if (doorActive)
+        {
+            bool any = false;
+            for (int i = 0; i < ejectorParts.Length; i++)
+            {
+                if (ejectorParts[i] == null) continue;
+                float t = Time.time - doorStart[i];
+                float open = DoorCurve(t);
+                ejectorParts[i].localRotation = Quaternion.AngleAxis(ejectorAngle * open, ejectorAxis);
+                ejectorParts[i].localPosition = ejectorRest[i] + ejectorSlide * open;
+                if (t < DoorLead + ShellFx.PushTime + DoorHold + DoorClose) any = true;
+            }
+            doorActive = any;
+        }
         if (ejectPending && Time.time >= ejectTime)
         {
             ejectPending = false;
@@ -270,11 +347,8 @@ public class TankShooter : MonoBehaviour
         Vector3 pos = gunPivot.TransformPoint(lp);
         Camera cam = Camera.main;
         if (cam != null && (pos - cam.transform.position).sqrMagnitude > 80f * 80f) return;   // вдали гильз не видно
-        Vector3 dir = gunPivot.TransformDirection(ld).normalized;
-        Vector3 vel = (rb != null ? rb.GetPointVelocity(pos) : Vector3.zero) +
-                      (dir + Random.insideUnitSphere * 0.12f).normalized * Random.Range(2.6f, 3.6f);
         float len = casingLength * gunPivot.lossyScale.z;
-        ShellFx.Eject(pos, gunPivot.rotation, vel, len, casingKind, gun.FlashColor, rb);
+        ShellFx.Eject(gunPivot, lp, ld, len, casingKind, casingFuture, casingGlow, rb);
     }
 
     // Наклон башни (её «вперёд») к горизонту, градусы (+ нос башни вверх)

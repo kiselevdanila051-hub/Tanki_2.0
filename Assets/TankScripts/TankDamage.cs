@@ -175,7 +175,7 @@ public partial class TankDamage : MonoBehaviour
             if (n.Contains("Wheel") || n.Contains("wheel")) { wheels.Add(r); continue; }
 
             bool hull = n == "Hull";
-            bool turret = n == "TurretModel" || n == "Turret Body";
+            bool turret = n == "TurretModel" || n == "Turret Body" || n == "TurretMechModel";   // детали механизма на башне — как башня
             bool barrel = n == "BarrelModel" || n == "Barrel" || n == "RecoilModel" || n == "EjectorModel";   // подвижные части — как ствол
             if (!hull && !turret && !barrel) continue;   // гусеницы, метка — без повреждений
 
@@ -219,7 +219,7 @@ public partial class TankDamage : MonoBehaviour
             // ствол с разметкой вставок тоже (металлические части ствола — вставки), без разметки остаётся тёмным
             SetInlay(m, mk);
             if (m.HasProperty(GlowColorId)) m.SetColor(GlowColorId, GlowOf(builder, hull));
-            if (hull || p.name == "TurretModel" || ((p.name == "BarrelModel" || p.name == "RecoilModel" || p.name == "EjectorModel") && p.inlay)) m.SetColor("_BaseColor", hullColor);
+            if (hull || p.name == "TurretModel" || p.name == "TurretMechModel" || ((p.name == "BarrelModel" || p.name == "RecoilModel" || p.name == "EjectorModel") && p.inlay)) m.SetColor("_BaseColor", hullColor);
             if (m.HasProperty("_PaintOn")) Paints.Apply(m, builder != null ? builder.paint : 0, m.GetColor("_BaseColor"));
         }
     }

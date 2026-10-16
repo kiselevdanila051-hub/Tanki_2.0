@@ -84,10 +84,7 @@ public class GunInfo
     public RigPoint eject;            // окно выброса гильз от оси качания (координаты файла OBJ — x при импорте зеркалится)
     public RigPoint ejectDir;         // куда летят гильзы (оси ствольной группы, координаты файла OBJ)
     public float casing;              // длина гильзы, м (у диска Рикошета — диаметр); 0 — гильз нет
-    public RigPoint ejectorHinge;     // шторка окна выброса (ejector.obj): петля — точка поворота от оси качания (координаты OBJ)
-    public RigPoint ejectorAxis;      // ось поворота шторки при открытии (координаты OBJ)
-    public float ejectorAngle;        // угол открытия, градусы
-    public RigPoint ejectorSlide;     // сдвиг шторки при открытии (координаты OBJ), м
+    public MechPart[] mechanism;      // подвижные детали механизма выброса (шторки, толкатель) — TankShooter двигает их при выстреле
     public float[] color;             // цвет, если у модели нет текстуры
     public float[] glow;              // цвет светящихся деталей башни и ствола (r, g, b, HDR), нет — цвет по умолчанию
     public float smoothness = 0.3f;
@@ -107,7 +104,26 @@ public class GunModel
     public Mesh turret;
     public Mesh barrel;               // может отсутствовать — тогда ствол часть башни
     public Mesh recoil, recoil2;      // подвижные части отката (от оси качания; у Твинса — по стволу на каждую), могут отсутствовать
-    public Mesh ejector, ejector2;    // шторки окна выброса (от оси качания; у Твинса — по стволу на каждую), могут отсутствовать
+    public Mesh[] mechanism;          // сетки деталей механизма выброса (по info.mechanism; нет файла — null)
     public Material material;
     public Material barrelMaterial;
+}
+
+// Подвижная деталь механизма выброса гильз (info.json, «mechanism»): отдельная сетка в папке модели. Деталь крепится к
+// ствольной группе (координаты от оси качания) или к башне (onTurret, координаты башни); при выстреле поворачивается вокруг
+// оси axis через точку hinge на angle градусов и сдвигается на slide (координаты файла OBJ, x при сборке зеркалится).
+// Время — от момента выброса гильзы: начало lead (отрицательное — раньше), открытие open, держится hold, закрытие close, с.
+[System.Serializable]
+public class MechPart
+{
+    public string mesh;               // имя файла сетки без .obj
+    public bool onTurret;             // на башне (иначе — на ствольной группе)
+    public RigPoint hinge;
+    public RigPoint axis;
+    public float angle;
+    public RigPoint slide;
+    public float lead = -0.06f;
+    public float open = 0.06f;
+    public float hold = 0.15f;
+    public float close = 0.16f;
 }

@@ -4,8 +4,9 @@ using UnityEngine;
 // Собирает танк из корпуса и пушки: меняет характеристики и заново строит внешний вид.
 // Если для корпуса или пушки есть модель (ModelLibrary), ставится она; иначе — заглушка из кубов.
 // Катки и гусеницы строит TrackVisuals. Ствол сидит на «шарнире» (GunPivot) — его наклоняет автонаводка; подвижные части
-// отката (RecoilModel, у моделей с recoil.obj) при выстреле двигает, шторку окна выброса (EjectorModel, ejector.obj)
-// открывает и выбрасывает гильзы TankShooter.
+// отката (RecoilModel, у моделей с recoil.obj) при выстреле двигает, детали механизма выброса (info.json «mechanism»:
+// шторки, толкатель — EjectorModel на ствольной группе, TurretMechModel на башне) приводит в движение и выбрасывает
+// гильзы TankShooter.
 public class TankBuilder : MonoBehaviour
 {
     public HullType hullType = HullType.Hunter;
@@ -104,7 +105,8 @@ public class TankBuilder : MonoBehaviour
         pivot.transform.SetParent(turret.transform, false);
         Vector3 muzzlePos;
         List<Transform> recoilParts = new List<Transform>();
-        List<Transform> ejectorParts = new List<Transform>();
+        List<Transform> mechParts = new List<Transform>();
+        List<MechPart> mechInfo = new List<MechPart>();
 
         if (gm != null)
         {
@@ -115,20 +117,20 @@ public class TankBuilder : MonoBehaviour
             // подвижные части отката (труба, кожух, тормоз) — отдельные меши от оси качания, их двигает TankShooter
             foreach (Mesh rm in new[] { gm.recoil, gm.recoil2 })
                 if (rm != null) recoilParts.Add(MeshPart("RecoilModel", pivot.transform, Vector3.zero, rm, gm.barrelMaterial).transform);
-            // шторки окна выброса: петля (точка поворота из info.json, x зеркалится) и сама шторка под ней; у второй шторки
-            // (Твинс, второй ствол) петля зеркальна первой
-            Vector3 hinge = gm.info.ejectorHinge != null
-                ? new Vector3(-gm.info.ejectorHinge.x, gm.info.ejectorHinge.y, gm.info.ejectorHinge.z) : Vector3.zero;
-            for (int k = 0; k < 2; k++)
+            // детали механизма выброса: петля (точка поворота из info.json, x зеркалится) и сама деталь под ней — на ствольной
+            // группе (координаты от оси качания) или на башне
+            for (int k = 0; gm.mechanism != null && k < gm.mechanism.Length; k++)
             {
-                Mesh em = k == 0 ? gm.ejector : gm.ejector2;
-                if (em == null) continue;
-                Vector3 h = k == 0 ? hinge : new Vector3(-hinge.x, hinge.y, hinge.z);
-                GameObject hg = new GameObject("EjectorHinge");
-                hg.transform.SetParent(pivot.transform, false);
+                MechPart mp = gm.info.mechanism[k];
+                if (gm.mechanism[k] == null || mp == null) continue;
+                Vector3 h = mp.hinge != null ? new Vector3(-mp.hinge.x, mp.hinge.y, mp.hinge.z) : Vector3.zero;
+                GameObject hg = new GameObject("MechHinge " + mp.mesh);
+                hg.transform.SetParent(mp.onTurret ? turret.transform : pivot.transform, false);
                 hg.transform.localPosition = h;
-                MeshPart("EjectorModel", hg.transform, -h, em, gm.barrelMaterial);
-                ejectorParts.Add(hg.transform);
+                MeshPart(mp.onTurret ? "TurretMechModel" : "EjectorModel", hg.transform, -h, gm.mechanism[k],
+                         mp.onTurret ? gm.material : gm.barrelMaterial);
+                mechParts.Add(hg.transform);
+                mechInfo.Add(mp);
             }
             muzzlePos = new Vector3(gm.info.muzzle.x, gm.info.muzzle.y, gm.info.muzzle.z);
         }
@@ -183,13 +185,8 @@ public class TankBuilder : MonoBehaviour
             ? new Color(gm.info.glow[0], gm.info.glow[1], gm.info.glow[2]) : gun.FlashColor * 2.2f;
         shooter.SetRecoil(recoilParts.ToArray(), gm != null ? gm.info.recoilDist : 0f, ejectAt, ejectDir,
                           gm != null && gm.info.eject != null ? gm.info.casing : 0f, CasingOf(gunType), gunModification >= 3, glow);
-        // Шторка окна выброса: ось поворота при отражении x — (−x, y, z) с обратным углом, сдвиг — (−x, y, z)
-        if (gm != null && ejectorParts.Count > 0)
-        {
-            RigPoint ax = gm.info.ejectorAxis, sl = gm.info.ejectorSlide;
-            shooter.SetEjector(ejectorParts.ToArray(), ax != null ? new Vector3(-ax.x, ax.y, ax.z) : Vector3.right, -gm.info.ejectorAngle,
-                               sl != null ? new Vector3(-sl.x, sl.y, sl.z) : Vector3.zero);
-        }
+        // Механизм выброса: ось поворота при отражении x — (−x, y, z) с обратным углом, сдвиг — (−x, y, z)
+        if (mechParts.Count > 0) shooter.SetMechanism(mechParts.ToArray(), mechInfo.ToArray());
 
         // Скруглённая форма башни (капсула вдоль башни по её габаритам) — включается, только когда танк перевёрнут: на плоской
         // крыше общей коробки (она охватывает и башню) танк лежал ровно, а на башне ему не удержаться — заваливается набок

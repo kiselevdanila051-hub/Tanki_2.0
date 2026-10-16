@@ -37,15 +37,12 @@ public class TankShooter : MonoBehaviour
     Color casingGlow;
     const float KickBack = 0.045f, KickHold = 0.03f, KickReturn = 0.42f;   // фазы отката, с
 
-    // Шторки окна выброса (ejector.obj / ejector2.obj, SetEjector): петля — точка поворота, шторка поворачивается вокруг
-    // оси на ejectorAngle и сдвигается на ejectorSlide; открывается перед выбросом гильзы, закрывается после
-    Transform[] ejectorParts;
-    Vector3[] ejectorRest;
-    float[] ejectorSide, doorStart;
-    Vector3 ejectorAxis, ejectorSlide;
-    float ejectorAngle;
-    bool doorActive;
-    const float DoorLead = 0.06f, DoorHold = 0.1f, DoorClose = 0.16f;   // фазы шторки, с
+    // Механизм выброса (SetMechanism, info.json «mechanism»): детали поворачиваются вокруг своей петли и сдвигаются,
+    // каждая со своим временем от момента выброса гильзы (шторки открываются раньше, толкатель — вместе с гильзой)
+    Transform[] mechParts;
+    Vector3[] mechRest, mechAxis, mechSlide;
+    float[] mechAngle, mechSide, mechStart, mechLead, mechOpen, mechHold, mechClose;
+    bool mechActive;
 
     public bool IsScoping { get; private set; }
     public float Charge01 { get; private set; }
@@ -216,44 +213,57 @@ public class TankShooter : MonoBehaviour
         casingFuture = future;
         casingGlow = glow;
         recoilActive = ejectPending = false;
-        ejectorParts = null;
-        doorActive = false;
+        mechParts = null;
+        mechActive = false;
     }
 
-    // Шторки окна выброса: hinges — петли (дочерняя деталь — сама шторка), axis / angle — поворот при открытии,
-    // slide — сдвиг (в осях ствольной группы, уже с отражением x). У Твинса шторка своя у каждого ствола (по стороне сетки)
-    public void SetEjector(Transform[] hinges, Vector3 axis, float angle, Vector3 slide)
+    // Механизм выброса: hinges — петли (дочерняя деталь — сама деталь), info — движение и время каждой (координаты файла OBJ:
+    // здесь x зеркалится — ось поворота (−x, y, z) с обратным углом, сдвиг (−x, y, z)). У Твинса детали стволов — по стороне
+    public void SetMechanism(Transform[] hinges, MechPart[] info)
     {
-        ejectorParts = hinges != null && hinges.Length > 0 ? hinges : null;
-        int n = ejectorParts != null ? ejectorParts.Length : 0;
-        ejectorRest = new Vector3[n];
-        ejectorSide = new float[n];
-        doorStart = new float[n];
+        mechParts = hinges != null && hinges.Length > 0 ? hinges : null;
+        int n = mechParts != null ? mechParts.Length : 0;
+        mechRest = new Vector3[n]; mechAxis = new Vector3[n]; mechSlide = new Vector3[n];
+        mechAngle = new float[n]; mechSide = new float[n]; mechStart = new float[n];
+        mechLead = new float[n]; mechOpen = new float[n]; mechHold = new float[n]; mechClose = new float[n];
         for (int i = 0; i < n; i++)
         {
-            ejectorRest[i] = ejectorParts[i].localPosition;
-            MeshFilter mf = ejectorParts[i].GetComponentInChildren<MeshFilter>();
-            ejectorSide[i] = mf != null && mf.sharedMesh != null
-                ? Mathf.Sign(mf.transform.localPosition.x + mf.sharedMesh.bounds.center.x + ejectorParts[i].localPosition.x) : 0f;
-            doorStart[i] = -10f;
+            MechPart p = info[i];
+            mechRest[i] = mechParts[i].localPosition;
+            Vector3 ax = p.axis != null ? new Vector3(-p.axis.x, p.axis.y, p.axis.z) : Vector3.zero;
+            mechAxis[i] = ax.sqrMagnitude > 1e-6f ? ax.normalized : Vector3.right;
+            mechAngle[i] = -p.angle;
+            mechSlide[i] = p.slide != null ? new Vector3(-p.slide.x, p.slide.y, p.slide.z) : Vector3.zero;
+            mechLead[i] = p.lead;
+            mechOpen[i] = Mathf.Max(0.01f, p.open);
+            mechHold[i] = Mathf.Max(0f, p.hold);
+            mechClose[i] = Mathf.Max(0.01f, p.close);
+            MeshFilter mf = mechParts[i].GetComponentInChildren<MeshFilter>();
+            mechSide[i] = mf != null && mf.sharedMesh != null
+                ? Mathf.Sign(mf.transform.localPosition.x + mf.sharedMesh.bounds.center.x + mechParts[i].localPosition.x) : 0f;
+            mechStart[i] = -10f;
         }
-        ejectorAxis = axis.sqrMagnitude > 1e-6f ? axis.normalized : Vector3.right;
-        ejectorAngle = angle;
-        ejectorSlide = slide;
-        doorActive = false;
+        mechActive = false;
     }
 
-    // Открытость шторки 0..1 по времени от начала открытия: открывается за DoorLead, держится, пока гильза выходит,
-    // закрывается за DoorClose
-    static float DoorCurve(float t)
+    // Положение детали 0..1 по времени от начала её движения: open — открывается, hold — держится, close — закрывается
+    static float MechCurve(float t, float open, float hold, float close)
     {
         if (t <= 0f) return 0f;
-        if (t < DoorLead) { float k = t / DoorLead; return k * k * (3f - 2f * k); }
-        t -= DoorLead + ShellFx.PushTime + DoorHold;
+        if (t < open) { float k = t / open; return k * k * (3f - 2f * k); }
+        t -= open + hold;
         if (t < 0f) return 1f;
-        if (t >= DoorClose) return 0f;
-        float r = t / DoorClose;
+        if (t >= close) return 0f;
+        float r = t / close;
         return 1f - r * r * (3f - 2f * r);
+    }
+
+    // Есть ли у механизма детали другой стороны (два ствола): тогда деталь работает только у выстрелившего ствола
+    bool HasOtherSide(int i)
+    {
+        for (int j = 0; j < mechParts.Length; j++)
+            if (j != i && mechSide[j] == -mechSide[i]) return true;
+        return false;
     }
 
     // Выстрел: откат (power — доля хода) и гильза. Вызывается после выбора ствола (Твинс)
@@ -275,15 +285,15 @@ public class TankShooter : MonoBehaviour
             ejectPending = true;
             ejectTime = Time.time + ShellFx.EjectDelay(casingKind);
             ejectSign = side;
-            // шторка окна выброса у выстрелившего ствола открывается чуть раньше выброса
-            if (ejectorParts != null)
+            // механизм выброса у выстрелившего ствола: каждая деталь — в своё время относительно выброса
+            if (mechParts != null)
             {
-                for (int i = 0; i < ejectorParts.Length; i++)
+                for (int i = 0; i < mechParts.Length; i++)
                 {
-                    if (ejectorParts[i] == null || (side != 0f && ejectorParts.Length > 1 && ejectorSide[i] != side)) continue;
-                    doorStart[i] = ejectTime - DoorLead;
+                    if (mechParts[i] == null || (side != 0f && mechSide[i] != 0f && mechSide[i] != side && HasOtherSide(i))) continue;
+                    mechStart[i] = ejectTime + mechLead[i];
                 }
-                doorActive = true;
+                mechActive = true;
             }
         }
     }
@@ -315,19 +325,19 @@ public class TankShooter : MonoBehaviour
             }
             recoilActive = any;
         }
-        if (doorActive)
+        if (mechActive)
         {
             bool any = false;
-            for (int i = 0; i < ejectorParts.Length; i++)
+            for (int i = 0; i < mechParts.Length; i++)
             {
-                if (ejectorParts[i] == null) continue;
-                float t = Time.time - doorStart[i];
-                float open = DoorCurve(t);
-                ejectorParts[i].localRotation = Quaternion.AngleAxis(ejectorAngle * open, ejectorAxis);
-                ejectorParts[i].localPosition = ejectorRest[i] + ejectorSlide * open;
-                if (t < DoorLead + ShellFx.PushTime + DoorHold + DoorClose) any = true;
+                if (mechParts[i] == null) continue;
+                float t = Time.time - mechStart[i];
+                float k = MechCurve(t, mechOpen[i], mechHold[i], mechClose[i]);
+                mechParts[i].localRotation = Quaternion.AngleAxis(mechAngle[i] * k, mechAxis[i]);
+                mechParts[i].localPosition = mechRest[i] + mechSlide[i] * k;
+                if (t < mechOpen[i] + mechHold[i] + mechClose[i]) any = true;
             }
-            doorActive = any;
+            mechActive = any;
         }
         if (ejectPending && Time.time >= ejectTime)
         {

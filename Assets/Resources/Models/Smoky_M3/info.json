@@ -37,20 +37,83 @@
         "z": 0.06
     },
     "casing": 0.26,
-    "ejectorHinge": {
-        "x": 0.1335,
-        "y": 0.009,
-        "z": 0.0475
-    },
-    "ejectorAxis": {
-        "x": -0.0854,
-        "y": 0.0,
-        "z": 0.9963
-    },
-    "ejectorAngle": 105.0,
     "glow": [
         3.0,
         1.1,
         0.25
+    ],
+    "mechanism": [
+        {
+            "mesh": "ejector",
+            "onTurret": false,
+            "hinge": {
+                "x": 0.1335,
+                "y": 0.009,
+                "z": 0.0475
+            },
+            "axis": {
+                "x": -0.0854,
+                "y": 0.0,
+                "z": 0.9963
+            },
+            "angle": 90.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": -0.07,
+            "open": 0.06,
+            "hold": 0.17,
+            "close": 0.16
+        },
+        {
+            "mesh": "ejector_kicker",
+            "onTurret": false,
+            "hinge": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "axis": {
+                "x": 1.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "angle": 0.0,
+            "slide": {
+                "x": 0.07,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": 0.0,
+            "open": 0.07,
+            "hold": 0.03,
+            "close": 0.14
+        },
+        {
+            "mesh": "ejector_shutter",
+            "onTurret": true,
+            "hinge": {
+                "x": 0.3513,
+                "y": 0.216,
+                "z": 0.495
+            },
+            "axis": {
+                "x": -0.0459,
+                "y": 0.0,
+                "z": 0.9989
+            },
+            "angle": 110.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": -0.08,
+            "open": 0.07,
+            "hold": 0.24,
+            "close": 0.18
+        }
     ]
 }

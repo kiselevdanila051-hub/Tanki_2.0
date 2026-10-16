@@ -4,7 +4,9 @@ using UnityEngine;
 // Собирает танк из корпуса и пушки: меняет характеристики и заново строит внешний вид.
 // Если для корпуса или пушки есть модель (ModelLibrary), ставится она; иначе — заглушка из кубов.
 // Катки и гусеницы строит TrackVisuals. Ствол сидит на «шарнире» (GunPivot) — его наклоняет автонаводка; подвижные части
-// отката (RecoilModel, у моделей с recoil.obj) при выстреле двигает и выбрасывает гильзы TankShooter.
+// отката (RecoilModel, у моделей с recoil.obj) при выстреле двигает, детали механизма выброса (info.json «mechanism»:
+// шторки, толкатель — EjectorModel на ствольной группе, TurretMechModel на башне) приводит в движение и выбрасывает
+// гильзы TankShooter.
 public class TankBuilder : MonoBehaviour
 {
     public HullType hullType = HullType.Hunter;
@@ -103,6 +105,9 @@ public class TankBuilder : MonoBehaviour
         pivot.transform.SetParent(turret.transform, false);
         Vector3 muzzlePos;
         List<Transform> recoilParts = new List<Transform>();
+        List<Transform> mechParts = new List<Transform>();
+        List<MechPart> mechInfo = new List<MechPart>();
+        Spinner spinner = null;
 
         if (gm != null)
         {
@@ -113,6 +118,33 @@ public class TankBuilder : MonoBehaviour
             // подвижные части отката (труба, кожух, тормоз) — отдельные меши от оси качания, их двигает TankShooter
             foreach (Mesh rm in new[] { gm.recoil, gm.recoil2 })
                 if (rm != null) recoilParts.Add(MeshPart("RecoilModel", pivot.transform, Vector3.zero, rm, gm.barrelMaterial).transform);
+            // детали механизма выброса: петля (точка поворота из info.json, x зеркалится) и сама деталь под ней — на ствольной
+            // группе (координаты от оси качания) или на башне
+            for (int k = 0; gm.mechanism != null && k < gm.mechanism.Length; k++)
+            {
+                MechPart mp = gm.info.mechanism[k];
+                if (gm.mechanism[k] == null || mp == null) continue;
+                Vector3 h = mp.hinge != null ? new Vector3(-mp.hinge.x, mp.hinge.y, mp.hinge.z) : Vector3.zero;
+                GameObject hg = new GameObject("MechHinge " + mp.mesh);
+                hg.transform.SetParent(mp.onTurret ? turret.transform : pivot.transform, false);
+                hg.transform.localPosition = h;
+                MeshPart(mp.onTurret ? "TurretMechModel" : "EjectorModel", hg.transform, -h, gm.mechanism[k],
+                         mp.onTurret ? gm.material : gm.barrelMaterial);
+                mechParts.Add(hg.transform);
+                mechInfo.Add(mp);
+            }
+            // вращающаяся деталь (турбина): петля в точке center (x зеркалится), деталь под ней
+            if (gm.spinner != null && gm.info.spinner != null)
+            {
+                SpinnerPart sp = gm.info.spinner;
+                Vector3 c = sp.center != null ? new Vector3(-sp.center.x, sp.center.y, sp.center.z) : Vector3.zero;
+                GameObject sg = new GameObject("Spinner " + sp.mesh);
+                sg.transform.SetParent(turret.transform, false);
+                sg.transform.localPosition = c;
+                MeshPart("TurretMechModel", sg.transform, -c, gm.spinner, gm.material);
+                spinner = sg.AddComponent<Spinner>();
+                spinner.Setup(sp.axis != null ? new Vector3(-sp.axis.x, sp.axis.y, sp.axis.z) : Vector3.forward, sp.idle, sp.fire, sp.accel);
+            }
             muzzlePos = new Vector3(gm.info.muzzle.x, gm.info.muzzle.y, gm.info.muzzle.z);
         }
         else
@@ -162,8 +194,16 @@ public class TankBuilder : MonoBehaviour
         Vector3 ejectAt = Vector3.zero, ejectDir = Vector3.right;
         if (gm != null && gm.info.eject != null) ejectAt = new Vector3(-gm.info.eject.x, gm.info.eject.y, gm.info.eject.z);
         if (gm != null && gm.info.ejectDir != null) ejectDir = new Vector3(-gm.info.ejectDir.x, gm.info.ejectDir.y, gm.info.ejectDir.z);
+        Vector3 ejectFly = Vector3.zero;
+        if (gm != null && gm.info.ejectFly != null) ejectFly = new Vector3(-gm.info.ejectFly.x, gm.info.ejectFly.y, gm.info.ejectFly.z);
+        Color glow = gm != null && gm.info.glow != null && gm.info.glow.Length >= 3
+            ? new Color(gm.info.glow[0], gm.info.glow[1], gm.info.glow[2]) : gun.FlashColor * 2.2f;
         shooter.SetRecoil(recoilParts.ToArray(), gm != null ? gm.info.recoilDist : 0f, ejectAt, ejectDir,
-                          gm != null && gm.info.eject != null ? gm.info.casing : 0f, CasingOf(gunType));
+                          gm != null && gm.info.eject != null ? gm.info.casing : 0f, CasingOf(gunType), gunModification >= 3, glow,
+                          gm != null && gm.info.ejectOnTurret ? turret.transform : null, gm != null ? gm.info.ejectPush : 0f, ejectFly);
+        // Механизм выброса: ось поворота при отражении x — (−x, y, z) с обратным углом, сдвиг — (−x, y, z)
+        if (mechParts.Count > 0) shooter.SetMechanism(mechParts.ToArray(), mechInfo.ToArray());
+        if (spinner != null) spinner.shooter = shooter;
 
         // Скруглённая форма башни (капсула вдоль башни по её габаритам) — включается, только когда танк перевёрнут: на плоской
         // крыше общей коробки (она охватывает и башню) танк лежал ровно, а на башне ему не удержаться — заваливается набок
@@ -224,12 +264,18 @@ public class TankBuilder : MonoBehaviour
         return go;
     }
 
-    // Что вылетает из окна выброса: пороховые — широкая гильза, Шафт — длинная бутылочная, энергетические — ячейка
+    // Что вылетает из окна выброса: у каждой пушки своя гильза (формы — ShellFx)
     static CasingKind CasingOf(GunType g)
     {
-        if (g == GunType.Smoky || g == GunType.Thunder) return CasingKind.Shell;
-        if (g == GunType.Shaft) return CasingKind.Rifle;
-        return CasingKind.Cell;
+        switch (g)
+        {
+            case GunType.Smoky: return CasingKind.Shell;
+            case GunType.Thunder: return CasingKind.HeavyShell;
+            case GunType.Shaft: return CasingKind.Rifle;
+            case GunType.Twins: return CasingKind.PlasmaCell;
+            case GunType.Ricochet: return CasingKind.RingCell;
+            default: return CasingKind.Cell;                       // Рельса
+        }
     }
 
     // Поправка размера конкретной пушки на конкретном корпусе (сверх gunScale корпуса)

@@ -695,7 +695,7 @@ public partial class TankDamage
             if (p.gone || p.rend == null || !p.rend.enabled) continue;
             if (p.name == "BarrelModel") barrel = p;
             if (p.name == "TurretModel") turret = p;
-            if (p.name == "RecoilModel") moving.Add(p);
+            if (p.name == "RecoilModel" || p.name == "EjectorModel") moving.Add(p);
         }
         if (barrel == null) return;
         Mesh copy = Instantiate(barrel.mesh != null ? barrel.mesh : barrel.mf.sharedMesh);
@@ -717,6 +717,7 @@ public partial class TankDamage
             child.layer = go.layer;
             child.transform.SetParent(go.transform, false);
             child.transform.localPosition = tr.InverseTransformPoint(p.tr.position);
+            child.transform.localRotation = Quaternion.Inverse(tr.rotation) * p.tr.rotation;   // шторка могла быть открыта
             child.AddComponent<MeshFilter>().sharedMesh = mc;
             child.AddComponent<MeshRenderer>().sharedMaterials = pm;
             dbr.AddOwned(mc);

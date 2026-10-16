@@ -162,6 +162,13 @@ public static class ModelLibrary
         m.barrel = Resources.Load<Mesh>(folder + "/barrel");
         m.recoil = Resources.Load<Mesh>(folder + "/recoil");
         m.recoil2 = Resources.Load<Mesh>(folder + "/recoil2");
+        int nm = m.info.mechanism != null ? m.info.mechanism.Length : 0;
+        m.mechanism = new Mesh[nm];
+        for (int i = 0; i < nm; i++)
+            if (m.info.mechanism[i] != null && !string.IsNullOrEmpty(m.info.mechanism[i].mesh))
+                m.mechanism[i] = Resources.Load<Mesh>(folder + "/" + m.info.mechanism[i].mesh);
+        if (m.info.spinner != null && !string.IsNullOrEmpty(m.info.spinner.mesh))
+            m.spinner = Resources.Load<Mesh>(folder + "/" + m.info.spinner.mesh);
         m.material = MakeMaterial(folder, m.info.color, m.info.smoothness, m.info.metallic);
         float[] dark = m.info.color != null && m.info.color.Length >= 3
             ? new float[] { m.info.color[0] * 0.75f, m.info.color[1] * 0.75f, m.info.color[2] * 0.75f } : null;

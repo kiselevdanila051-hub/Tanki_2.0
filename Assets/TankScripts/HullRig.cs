@@ -20,6 +20,7 @@ public class HullRig
     public RigPoint turretMount;      // где башня крепится к корпусу
     public RigWheelMid wheelMidX;     // положение катков поперёк корпуса
     public float[] color;             // цвет корпуса, если у модели нет текстуры (r, g, b)
+    public float[] glow;              // цвет светящихся деталей (r, g, b, HDR — можно больше 1), нет — цвет по умолчанию
     public float smoothness = 0.3f;
     public float metallic = 0.1f;
     public float modelScale = 1f;     // увеличение модели в игре (0 или нет в файле — 1); меш и разметка не меняются
@@ -82,8 +83,14 @@ public class GunInfo
     public float recoilDist;          // откат подвижных частей ствола (recoil.obj, recoil2.obj) назад вдоль оси при выстреле, м; 0 — без отката
     public RigPoint eject;            // окно выброса гильз от оси качания (координаты файла OBJ — x при импорте зеркалится)
     public RigPoint ejectDir;         // куда летят гильзы (оси ствольной группы, координаты файла OBJ)
-    public float casing;              // длина гильзы, м; 0 — гильз нет
+    public float casing;              // длина гильзы, м (у диска Рикошета — диаметр); 0 — гильз нет
+    public bool ejectOnTurret;        // окно выброса на башне (eject / ejectDir — в координатах башни), иначе — на ствольной группе
+    public float ejectPush;           // ход выталкивания гильзы из окна, м (0 — по её радиусу: вбок из окна); вдоль оси — не меньше длины
+    public RigPoint ejectFly;         // куда гильза летит после выталкивания (0 — по ejectDir): порт выталкивает вдоль оси, вылет — вверх-вбок
+    public MechPart[] mechanism;      // подвижные детали механизма выброса (шторки, толкатель) — TankShooter двигает их при выстреле
+    public SpinnerPart spinner;       // вращающаяся деталь (турбина Фриза)
     public float[] color;             // цвет, если у модели нет текстуры
+    public float[] glow;              // цвет светящихся деталей башни и ствола (r, g, b, HDR), нет — цвет по умолчанию
     public float smoothness = 0.3f;
     public float metallic = 0.1f;
 }
@@ -101,6 +108,40 @@ public class GunModel
     public Mesh turret;
     public Mesh barrel;               // может отсутствовать — тогда ствол часть башни
     public Mesh recoil, recoil2;      // подвижные части отката (от оси качания; у Твинса — по стволу на каждую), могут отсутствовать
+    public Mesh[] mechanism;          // сетки деталей механизма выброса (по info.mechanism; нет файла — null)
+    public Mesh spinner;              // вращающаяся деталь (info.spinner), может отсутствовать
     public Material material;
     public Material barrelMaterial;
+}
+
+// Вращающаяся деталь (info.json «spinner»): отдельная сетка в папке модели в координатах башни, крутится вокруг оси axis
+// через точку center: на холостом ходу idle, при стрельбе разгоняется до fire (градусы в секунду); accel — доля fire за секунду.
+[System.Serializable]
+public class SpinnerPart
+{
+    public string mesh;
+    public RigPoint center;
+    public RigPoint axis;
+    public float idle = 120f;
+    public float fire = 1080f;
+    public float accel = 1.5f;
+}
+
+// Подвижная деталь механизма выброса гильз (info.json, «mechanism»): отдельная сетка в папке модели. Деталь крепится к
+// ствольной группе (координаты от оси качания) или к башне (onTurret, координаты башни); при выстреле поворачивается вокруг
+// оси axis через точку hinge на angle градусов и сдвигается на slide (координаты файла OBJ, x при сборке зеркалится).
+// Время — от момента выброса гильзы: начало lead (отрицательное — раньше), открытие open, держится hold, закрытие close, с.
+[System.Serializable]
+public class MechPart
+{
+    public string mesh;               // имя файла сетки без .obj
+    public bool onTurret;             // на башне (иначе — на ствольной группе)
+    public RigPoint hinge;
+    public RigPoint axis;
+    public float angle;
+    public RigPoint slide;
+    public float lead = -0.06f;
+    public float open = 0.06f;
+    public float hold = 0.15f;
+    public float close = 0.16f;
 }

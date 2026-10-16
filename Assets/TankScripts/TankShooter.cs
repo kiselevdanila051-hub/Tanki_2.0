@@ -7,8 +7,8 @@ using UnityEngine;
 //   Cone / Beam — потоковые пушки на запасе энергии (Огнемёт, Фриз, Изида);
 //   Sniper — Шафт: выстрел навскидку или прицел с накоплением заряда.
 // Видимые выстрелы: плазмоиды, трассеры, луч Рельсы с зарядкой, росчерк Шафта — ShotFx; струи и дуга Изиды — StreamFx;
-// луч прицела Шафта — здесь (UpdateScopeLaser). Откат подвижных частей ствола и выброс гильз — Kick / UpdateRecoil
-// (гильзы летят в ShellFx).
+// луч прицела Шафта — здесь (UpdateScopeLaser). Откат подвижных частей ствола, шторка окна выброса и выброс гильз —
+// Kick / UpdateRecoil (гильзы — ShellFx: выдвигаются из окна, дальше летят по физике).
 // Обычно работает автонаводка (AutoAim): ствол сам наклоняется к цели в пределах своих углов. При ручной наводке игрока
 // (manualAim, выставляет PlayerInput по AimPrefs) ствол наклоняет мышь (TankInput.AimPitch), выстрел идёт вдоль ствола.
 public class TankShooter : MonoBehaviour
@@ -32,9 +32,19 @@ public class TankShooter : MonoBehaviour
     float recoilDist, casingLength;
     Vector3 ejectLocal, ejectDirLocal;
     CasingKind casingKind;
-    bool recoilActive, ejectPending;
-    float ejectTime, ejectSign;
+    bool recoilActive, ejectPending, casingFuture;
+    float ejectTime, ejectSign, ejectPush;
+    Vector3 ejectFlyLocal;
+    Color casingGlow;
+    Transform ejectCarrier;                       // к чему привязано окно выброса: ствольная группа или башня
     const float KickBack = 0.045f, KickHold = 0.03f, KickReturn = 0.42f;   // фазы отката, с
+
+    // Механизм выброса (SetMechanism, info.json «mechanism»): детали поворачиваются вокруг своей петли и сдвигаются,
+    // каждая со своим временем от момента выброса гильзы (шторки открываются раньше, толкатель — вместе с гильзой)
+    Transform[] mechParts;
+    Vector3[] mechRest, mechAxis, mechSlide;
+    float[] mechAngle, mechSide, mechStart, mechLead, mechOpen, mechHold, mechClose;
+    bool mechActive;
 
     public bool IsScoping { get; private set; }
     public float Charge01 { get; private set; }
@@ -181,8 +191,11 @@ public class TankShooter : MonoBehaviour
 
     // ---------- Откат и гильзы ----------
     // parts — подвижные части (у Твинса по одной на ствол: какая откатывается — по стороне дула), dist — ход, м модели;
-    // eject / ejectDir — окно выброса и направление в осях ствольной группы (уже с отражением x), casing — длина гильзы
-    public void SetRecoil(Transform[] parts, float dist, Vector3 eject, Vector3 ejectDir, float casing, CasingKind kind)
+    // eject / ejectDir — окно выброса и направление в осях ствольной группы (уже с отражением x), casing — длина гильзы;
+    // future — гильза М3 (композит, хром, свечение), glow — цвет её светящихся частей; carrier — башня, если окно выброса
+    // на ней (null — на ствольной группе), push — ход выталкивания гильзы из окна (0 — по её радиусу)
+    public void SetRecoil(Transform[] parts, float dist, Vector3 eject, Vector3 ejectDir, float casing, CasingKind kind,
+                          bool future, Color glow, Transform carrier = null, float push = 0f, Vector3 fly = default)
     {
         recoilParts = parts != null && parts.Length > 0 ? parts : null;
         int n = recoilParts != null ? recoilParts.Length : 0;
@@ -200,7 +213,63 @@ public class TankShooter : MonoBehaviour
         ejectDirLocal = ejectDir.sqrMagnitude > 1e-6f ? ejectDir.normalized : Vector3.right;
         casingLength = casing;
         casingKind = kind;
+        casingFuture = future;
+        casingGlow = glow;
+        ejectCarrier = carrier;
+        ejectPush = push;
+        ejectFlyLocal = fly;
         recoilActive = ejectPending = false;
+        mechParts = null;
+        mechActive = false;
+    }
+
+    // Механизм выброса: hinges — петли (дочерняя деталь — сама деталь), info — движение и время каждой (координаты файла OBJ:
+    // здесь x зеркалится — ось поворота (−x, y, z) с обратным углом, сдвиг (−x, y, z)). У Твинса детали стволов — по стороне
+    public void SetMechanism(Transform[] hinges, MechPart[] info)
+    {
+        mechParts = hinges != null && hinges.Length > 0 ? hinges : null;
+        int n = mechParts != null ? mechParts.Length : 0;
+        mechRest = new Vector3[n]; mechAxis = new Vector3[n]; mechSlide = new Vector3[n];
+        mechAngle = new float[n]; mechSide = new float[n]; mechStart = new float[n];
+        mechLead = new float[n]; mechOpen = new float[n]; mechHold = new float[n]; mechClose = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            MechPart p = info[i];
+            mechRest[i] = mechParts[i].localPosition;
+            Vector3 ax = p.axis != null ? new Vector3(-p.axis.x, p.axis.y, p.axis.z) : Vector3.zero;
+            mechAxis[i] = ax.sqrMagnitude > 1e-6f ? ax.normalized : Vector3.right;
+            mechAngle[i] = -p.angle;
+            mechSlide[i] = p.slide != null ? new Vector3(-p.slide.x, p.slide.y, p.slide.z) : Vector3.zero;
+            mechLead[i] = p.lead;
+            mechOpen[i] = Mathf.Max(0.01f, p.open);
+            mechHold[i] = Mathf.Max(0f, p.hold);
+            mechClose[i] = Mathf.Max(0.01f, p.close);
+            MeshFilter mf = mechParts[i].GetComponentInChildren<MeshFilter>();
+            mechSide[i] = mf != null && mf.sharedMesh != null
+                ? Mathf.Sign(mf.transform.localPosition.x + mf.sharedMesh.bounds.center.x + mechParts[i].localPosition.x) : 0f;
+            mechStart[i] = -10f;
+        }
+        mechActive = false;
+    }
+
+    // Положение детали 0..1 по времени от начала её движения: open — открывается, hold — держится, close — закрывается
+    static float MechCurve(float t, float open, float hold, float close)
+    {
+        if (t <= 0f) return 0f;
+        if (t < open) { float k = t / open; return k * k * (3f - 2f * k); }
+        t -= open + hold;
+        if (t < 0f) return 1f;
+        if (t >= close) return 0f;
+        float r = t / close;
+        return 1f - r * r * (3f - 2f * r);
+    }
+
+    // Есть ли у механизма детали другой стороны (два ствола): тогда деталь работает только у выстрелившего ствола
+    bool HasOtherSide(int i)
+    {
+        for (int j = 0; j < mechParts.Length; j++)
+            if (j != i && mechSide[j] == -mechSide[i]) return true;
+        return false;
     }
 
     // Выстрел: откат (power — доля хода) и гильза. Вызывается после выбора ствола (Твинс)
@@ -220,8 +289,18 @@ public class TankShooter : MonoBehaviour
         if (casingLength > 0f)
         {
             ejectPending = true;
-            ejectTime = Time.time + (casingKind == CasingKind.Rifle ? 0.32f : casingKind == CasingKind.Cell ? 0.16f : 0.11f);
+            ejectTime = Time.time + ShellFx.EjectDelay(casingKind);
             ejectSign = side;
+            // механизм выброса у выстрелившего ствола: каждая деталь — в своё время относительно выброса
+            if (mechParts != null)
+            {
+                for (int i = 0; i < mechParts.Length; i++)
+                {
+                    if (mechParts[i] == null || (side != 0f && mechSide[i] != 0f && mechSide[i] != side && HasOtherSide(i))) continue;
+                    mechStart[i] = ejectTime + mechLead[i];
+                }
+                mechActive = true;
+            }
         }
     }
 
@@ -252,6 +331,20 @@ public class TankShooter : MonoBehaviour
             }
             recoilActive = any;
         }
+        if (mechActive)
+        {
+            bool any = false;
+            for (int i = 0; i < mechParts.Length; i++)
+            {
+                if (mechParts[i] == null) continue;
+                float t = Time.time - mechStart[i];
+                float k = MechCurve(t, mechOpen[i], mechHold[i], mechClose[i]);
+                mechParts[i].localRotation = Quaternion.AngleAxis(mechAngle[i] * k, mechAxis[i]);
+                mechParts[i].localPosition = mechRest[i] + mechSlide[i] * k;
+                if (t < mechOpen[i] + mechHold[i] + mechClose[i]) any = true;
+            }
+            mechActive = any;
+        }
         if (ejectPending && Time.time >= ejectTime)
         {
             ejectPending = false;
@@ -261,20 +354,19 @@ public class TankShooter : MonoBehaviour
 
     void EjectCasing()
     {
-        Vector3 lp = ejectLocal, ld = ejectDirLocal;
+        Vector3 lp = ejectLocal, ld = ejectDirLocal, lf = ejectFlyLocal;
         if (ejectSign != 0f)                                  // два ствола: окно у того, что выстрелил (зеркально по x)
         {
             lp.x = Mathf.Abs(lp.x) * ejectSign;
             ld.x = Mathf.Abs(ld.x) * ejectSign;
+            lf.x = Mathf.Abs(lf.x) * ejectSign;
         }
-        Vector3 pos = gunPivot.TransformPoint(lp);
+        Transform carrier = ejectCarrier != null ? ejectCarrier : gunPivot;
+        Vector3 pos = carrier.TransformPoint(lp);
         Camera cam = Camera.main;
         if (cam != null && (pos - cam.transform.position).sqrMagnitude > 80f * 80f) return;   // вдали гильз не видно
-        Vector3 dir = gunPivot.TransformDirection(ld).normalized;
-        Vector3 vel = (rb != null ? rb.GetPointVelocity(pos) : Vector3.zero) +
-                      (dir + Random.insideUnitSphere * 0.12f).normalized * Random.Range(2.6f, 3.6f);
-        float len = casingLength * gunPivot.lossyScale.z;
-        ShellFx.Eject(pos, gunPivot.rotation, vel, len, casingKind, gun.FlashColor, rb);
+        float k = carrier.lossyScale.z;
+        ShellFx.Eject(carrier, lp, ld, casingLength * k, casingKind, casingFuture, GlowPrefs.Resolve(casingGlow), rb, ejectPush * k, lf);
     }
 
     // Наклон башни (её «вперёд») к горизонту, градусы (+ нос башни вверх)

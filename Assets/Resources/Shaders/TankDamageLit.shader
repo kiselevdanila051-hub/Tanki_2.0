@@ -7,6 +7,9 @@
 // доля цвета _MetalFxColor) — износ, обгоревший остов, нагрев и заморозка (задаёт StatusEffects).
 // Вид вставок задаёт TankDamage по модификации корпуса: металл (_MetalColor, _MetalMetallic, _MetalSmooth)
 // или карбон (_Carbon = 1, плетение с шагом _CarbonCell).
+// Ещё два класса деталей (метка в той же координате: u = затенение + 4 — хром, + 6 — свечение): полированный хром
+// (_ChromeColor, _ChromeSmooth) и светящиеся щели и полосы (_GlowColor, HDR; цвет задаёт TankDamage из info.json / rig.json).
+// Свечение гаснет вместе с окраской обгоревшего остова (_MetalFx.x) и слабеет с износом.
 // Краска (_PaintOn = 1): текстура _PaintTex трипланарно по координатам модели, _PaintScale — повторов на метр.
 // Попадания у разрушаемых моделей (_HitCount > 0, массивы задаёт TankDamageM0): вмятины, копоть, ободранная краска, пробоины.
 // На «Арене» освещение умножается на запечённый свет карты под точкой (ArenaBakedShade, глобальные _ArenaBaked*).
@@ -66,6 +69,9 @@ Shader "Tanks/DamageLit"
         _MetalSmooth("Metal parts smoothness", Range(0.0, 1.0)) = 0.42
         _Carbon("Carbon inlays (0/1)", Float) = 0
         _CarbonCell("Carbon weave cell, m", Float) = 0.014
+        _ChromeColor("Chrome parts color", Color) = (0.80, 0.82, 0.85, 1)
+        _ChromeSmooth("Chrome parts smoothness", Range(0.0, 1.0)) = 0.88
+        [HDR] _GlowColor("Glow parts color (HDR)", Color) = (0.4, 1.6, 3.2, 1)
         _PaintTex("Paint texture (triplanar)", 2D) = "white" {}
         _PaintOn("Paint on (0/1)", Float) = 0
         _PaintScale("Paint tiles per meter", Float) = 0.3
@@ -220,6 +226,8 @@ Shader "Tanks/DamageLit"
             float4 _HeightRange;
             float4 _MetalColor, _MetalFx, _MetalFxColor;
             float _MetalMetallic, _MetalSmooth, _Carbon, _CarbonCell;
+            float4 _ChromeColor, _GlowColor;
+            float _ChromeSmooth;
             float _PaintOn, _PaintScale, _PaintMetallic, _PaintSmooth, _PaintBlend;
             TEXTURE2D(_PaintTex); SAMPLER(sampler_PaintTex);
 
@@ -271,6 +279,27 @@ Shader "Tanks/DamageLit"
                 s.albedo = lerp(s.albedo, mc, metal);
                 s.metallic = lerp(s.metallic, met, metal);
                 s.smoothness = lerp(s.smoothness, sm, metal);
+            }
+
+            // Хром: полированный светлый металл (темнеет и подкрашивается вместе с металлом — нагрев, иней, гарь)
+            void ApplyChrome(inout SurfaceData s, half chrome)
+            {
+                half3 c = _ChromeColor.rgb * _MetalFx.x;
+                c = lerp(c, _MetalFxColor.rgb, saturate(_MetalFx.y) * 0.6);
+                s.albedo = lerp(s.albedo, c, chrome);
+                s.metallic = lerp(s.metallic, 1.0, chrome);
+                s.smoothness = lerp(s.smoothness, _ChromeSmooth, chrome);
+            }
+
+            // Свечение: тёмное стекло, светится цветом _GlowColor. Гаснет у обгоревшего остова (_MetalFx.x = 0,28),
+            // с износом слабеет (1 − 0,45·износ)
+            half3 ApplyGlow(inout SurfaceData s, half glowPart)
+            {
+                s.albedo = lerp(s.albedo, half3(0.02, 0.02, 0.025), glowPart);
+                s.metallic = lerp(s.metallic, 0.0, glowPart);
+                s.smoothness = lerp(s.smoothness, 0.9, glowPart);
+                half alive = saturate((_MetalFx.x - 0.3) / 0.7);
+                return _GlowColor.rgb * glowPart * alive;
             }
 
             // Ячеистый шум: расстояние до границы ячеек (F2 - F1) — сетка трещин
@@ -531,14 +560,20 @@ Shader "Tanks/DamageLit"
                 InitializeStandardLitSurfaceData(input.uv.xy, surfaceData);
                 float3 nOS = TransformWorldToObjectDir(normalize(input.normalWS));
                 if (_PaintOn > 0.5) ApplyPaint(surfaceData, input.positionOS, nOS);
-                // Метка металла записана в запечённых данных: u = затенение + 2
-                half metal = step(1.5, input.uv.z) * _Bake;
+                // Метка класса детали записана в запечённых данных: u = затенение + 2·класс
+                // (0 — окраска, 1 — вставка: металл или карбон, 2 — хром, 3 — свечение)
+                half cls = floor(input.uv.z * 0.5) * _Bake;
+                half metal = step(0.5, cls) * step(cls, 1.5);
+                half chrome = step(1.5, cls) * step(cls, 2.5);
+                half glowPart = step(2.5, cls);
                 ApplyMetal(surfaceData, metal, input.positionOS, nOS);
-                ApplyVolume(surfaceData, float2(input.uv.z - 2.0 * metal, input.uv.w), input.positionOS, nOS);
+                ApplyChrome(surfaceData, chrome);
+                half3 partGlow = ApplyGlow(surfaceData, glowPart);
+                ApplyVolume(surfaceData, float2(input.uv.z - 2.0 * cls, input.uv.w), input.positionOS, nOS);
                 float3 bend = 0;
                 half3 glow = 0;
                 if (_HitCount > 0.5) ApplyHits(surfaceData, input.positionOS, nOS, bend, glow);
-                surfaceData.emission += glow;
+                surfaceData.emission += glow + partGlow;
                 // Изнанка (порванный металл, обрубки и обломки моделей М0 — двусторонние): тёмная, закопчённая
                 if (!IS_FRONT_VFACE(face, true, false))
                 {

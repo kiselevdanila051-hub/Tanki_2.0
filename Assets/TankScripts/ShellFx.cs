@@ -1,75 +1,149 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// Гильзы и отработанные энергоячейки, вылетающие из окна выброса при выстреле (TankShooter.EjectCasing). Пул без физики:
-// гильза летит по баллистике и кувыркается, отскакивает лучом от земли, стен и чужой брони (свой танк не задевает — у его
-// общего коллайдера крыша на высоте башни), на ровном ложится набок; через несколько секунд уменьшается и уходит в пул.
-// Меши процедурные, в долях длины (масштаб — длина гильзы из info.json × масштаб пушки): Shell — широкая латунная гильза
-// танкового выстрела (Смоки, Гром), Rifle — длинная бутылочная (Шафт), Cell — шестигранная энергоячейка с поясом цвета
-// выстрела (Рельса, Твинс, Рикошет). Материалы — шейдер Tanks/GarageLit (свечение пояска без ключевых слов URP Lit,
-// которые в сборке могут быть вырезаны), без него — материал по умолчанию.
-public enum CasingKind { Shell, Rifle, Cell }
+// Гильзы и отработанные энергоячейки (TankShooter.EjectCasing → ShellFx.Eject). У каждой пушки своя форма, у М3 — свой
+// «технологичный» вариант (композит, хром, светящиеся пояса):
+//   Shell      — Смоки: бутылочная латунная гильза с закраиной и капсюлем; М3 — композитная, латунные пояса, хромированное
+//                дульце, светящееся кольцо;
+//   HeavyShell — Гром: крупная гильза с толстым стальным донцем, коротким плечом и шейкой;
+//   Rifle      — Шафт: длинная винтовочная; М3 — воронёная с хромом и светящимся пояском;
+//   Cell       — Рельса: шестигранная конденсаторная ячейка с медными катушками и светящимися щелями;
+//   PlasmaCell — Твинс: плазменная капсула со светящимися продольными щелями;
+//   RingCell   — Рикошет: энергетический диск-«шайба» со светящимся внутренним кольцом.
+// Выброс анимирован: гильза выдвигается из окна выброса вместе со ствольной группой (PushTime; окно открывает шторка —
+// TankShooter), затем отпускается и дальше живёт по физике: Rigidbody с выпуклым коллайдером по форме (бутылочная катится
+// по дуге, шестигранная — с перекатом, диск встаёт на ребро или ложится), отскакивает от земли, стен и чужих танков,
+// со своим танком не сталкивается (его общая коробка выше башни). Удары озвучены (Resources/Sounds/casing_*).
+// Слой Ignore Raycast — выстрелы, автонаводка и подвеска гильз не замечают. Светящиеся части отработанной ячейки остывают.
+// Пул: не больше MaxCasings гильз (самая старая возвращается в пул); выход из боя — Clear.
+// Меши процедурные, в долях длины (масштаб — длина гильзы из info.json × масштаб пушки; у диска длина — диаметр).
+public enum CasingKind { Shell, Rifle, Cell, HeavyShell, PlasmaCell, RingCell }
+
+public class CasingDesign
+{
+    public Mesh mesh, hull;          // вид и выпуклая форма для коллайдера
+    public Material[] mats;          // по подсеткам; светящаяся — glowIndex (у каждой гильзы своя копия: остывает)
+    public int glowIndex = -1;
+    public PhysicsMaterial phys;
+    public float density;            // масса = density · длина³
+    public float radius;             // наибольший радиус в долях длины (ход выталкивания)
+    public float speed;              // скорость вылета, м/с
+    public float spin;               // кувырок, рад/с
+    public float axisSpin;           // вращение вокруг своей оси (диск), рад/с
+    public float delay;              // от выстрела до выброса, с (затвор открывается)
+    public bool powder;              // пороховая: из дульца выходит дымок
+    public string[] sounds;
+    public float volume;
+}
 
 public static class ShellFx
 {
-    const int MaxCasings = 48;                      // больше — самые старые возвращаются в пул
+    public const int MaxCasings = 40;               // больше — самые старые возвращаются в пул
+    public const float PushTime = 0.07f;            // выдвижение из окна выброса, с
     static readonly List<Casing> active = new List<Casing>();
     static readonly Stack<Casing> pool = new Stack<Casing>();
-    static readonly Dictionary<Color, Material> bands = new Dictionary<Color, Material>();
-    static Mesh[] meshes;                           // по CasingKind
-    static Material brass, cellBody;
+    static readonly Dictionary<Rigidbody, Collider[]> ownerColliders = new Dictionary<Rigidbody, Collider[]>();
+    static CasingDesign[] designs;                  // [вид · 2 + (М3 ? 1 : 0)]
+    static Material[] palette;
     static Material baseMat;
     static Transform root;
+    static float soundWindow;                       // ограничение звуков ударов: не больше SoundsPerWindow за 0,5 с
+    static int soundCount;
+    const int SoundsPerWindow = 6;
+
+    // Подсетки-цвета: 0 латунь, 1 медь капсюля, 2 копоть внутри, 3 композит, 4 свечение, 5 хром, 6 сталь, 7 воронёная сталь,
+    // 8 медь катушек
+    const int Brass = 0, Primer = 1, Soot = 2, Composite = 3, Glow = 4, Chrome = 5, Steel = 6, Gunmetal = 7, Copper = 8;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetCache()
     {
         active.Clear();
         pool.Clear();
-        bands.Clear();
-        meshes = null;
-        brass = cellBody = baseMat = null;
+        ownerColliders.Clear();
+        designs = null;
+        palette = null;
+        baseMat = null;
         root = null;
+        soundWindow = 0f;
+        soundCount = 0;
     }
 
-    public static void Eject(Vector3 pos, Quaternion rot, Vector3 vel, float length, CasingKind kind, Color color, Rigidbody owner)
+    // Задержка выброса после выстрела по виду (затвор открывается, шторка окна — чуть раньше)
+    public static float EjectDelay(CasingKind kind)
     {
-        if (RingTest.NoFx || length <= 0f) return;
-        if (meshes == null) Build();
+        return Design(kind, false).delay;
+    }
+
+    // carrier — ствольная группа (ось качания), localPos / localDir — окно выброса и направление вылета в её осях,
+    // length — длина гильзы, м; glow — цвет светящихся частей (HDR); owner — свой танк (с ним гильза не сталкивается);
+    // push — ход выталкивания из окна, м (0 — по радиусу гильзы: вбок из окна; вдоль оси — задаётся не меньше длины)
+    public static void Eject(Transform carrier, Vector3 localPos, Vector3 localDir, float length, CasingKind kind, bool future,
+                             Color glow, Rigidbody owner, float push = 0f, Vector3 fly = default)
+    {
+        if (RingTest.NoFx || length <= 0f || carrier == null) return;
+        CasingDesign d = Design(kind, future);
         Casing c = Rent();
-        MeshRenderer r = c.GetComponent<MeshRenderer>();
-        c.GetComponent<MeshFilter>().sharedMesh = meshes[(int)kind];
-        r.sharedMaterials = kind == CasingKind.Cell ? new[] { cellBody, Band(color) } : new[] { brass };
-        // гильза вылетает поперёк оси ствола и кувыркается: крутится вокруг оси, перпендикулярной направлению вылета
-        Vector3 spinAxis = Vector3.Cross(vel - (owner != null ? owner.linearVelocity : Vector3.zero), rot * Vector3.forward);
-        if (spinAxis.sqrMagnitude < 1e-4f) spinAxis = rot * Vector3.up;
-        Vector3 spin = spinAxis.normalized * Random.Range(9f, 16f) + Random.insideUnitSphere * 4f;
-        c.Launch(pos, rot * Quaternion.Euler(0f, Random.Range(-15f, 15f), 0f), vel, spin, length, kind == CasingKind.Rifle ? 0.1f : 0.155f,
-                 kind == CasingKind.Cell ? 0.25f : 0.38f, owner, Random.Range(5f, 7f));
         active.Add(c);
+        c.Launch(d, carrier, localPos, localDir.sqrMagnitude > 1e-6f ? localDir.normalized : Vector3.right, length, glow,
+                 owner, OwnerColliders(owner), Random.Range(7f, 9f), push, fly);
+    }
+
+    static Collider[] OwnerColliders(Rigidbody owner)
+    {
+        if (owner == null) return null;
+        Collider[] cs;
+        if (ownerColliders.TryGetValue(owner, out cs) && cs != null) return cs;
+        cs = owner.GetComponentsInChildren<Collider>(true);
+        ownerColliders[owner] = cs;
+        return cs;
+    }
+
+    // Звук удара: рядом с камерой и не больше SoundsPerWindow за полсекунды (пул источников звука общий с выстрелами)
+    public static bool AllowSound(Vector3 pos)
+    {
+        Camera cam = Camera.main;
+        if (cam == null || (pos - cam.transform.position).sqrMagnitude > 35f * 35f) return false;
+        if (Time.time - soundWindow > 0.5f) { soundWindow = Time.time; soundCount = 0; }
+        if (soundCount >= SoundsPerWindow) return false;
+        soundCount++;
+        return true;
     }
 
     static Casing Rent()
     {
+        Casing c = null;
         if (active.Count >= MaxCasings)
         {
-            Casing old = active[0];
+            c = active[0];
             active.RemoveAt(0);
-            if (old != null) return old;
+            if (c != null) c.gameObject.SetActive(false);   // выключение сбрасывает IgnoreCollision с прежним танком
         }
-        while (pool.Count > 0)
+        while (c == null && pool.Count > 0) c = pool.Pop();
+        if (c == null)
         {
-            Casing p = pool.Pop();
-            if (p != null) { p.gameObject.SetActive(true); return p; }
+            if (root == null) root = new GameObject("Casings").transform;
+            GameObject go = new GameObject("Casing");
+            go.layer = 2;                                                  // Ignore Raycast: выстрелы и подвеска не видят
+            go.transform.SetParent(root, false);
+            go.AddComponent<MeshFilter>();
+            go.AddComponent<MeshRenderer>();
+            MeshCollider mc = go.AddComponent<MeshCollider>();
+            mc.enabled = false;                                            // включается, когда гильза вылетела
+            mc.convex = true;
+            Rigidbody rb = go.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+            rb.maxDepenetrationVelocity = 2f;
+            rb.maxAngularVelocity = 60f;
+            rb.linearDamping = 0.05f;
+            rb.angularDamping = 0.6f;                                      // покатилась — постепенно останавливается
+            c = go.AddComponent<Casing>();
+            go.SetActive(false);
         }
-        if (root == null) root = new GameObject("Casings").transform;
-        GameObject go = new GameObject("Casing");
-        go.layer = 2;                                                     // Ignore Raycast: выстрелы и подвеска не видят
-        go.transform.SetParent(root, false);
-        go.AddComponent<MeshFilter>();
-        MeshRenderer mr = go.AddComponent<MeshRenderer>();
-        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        return go.AddComponent<Casing>();
+        c.gameObject.SetActive(true);
+        return c;
     }
 
     public static void Release(Casing c)
@@ -90,10 +164,11 @@ public static class ShellFx
             if (c != null) Object.Destroy(c.gameObject);
         }
         active.Clear();
+        ownerColliders.Clear();
     }
 
     // ---------- Материалы ----------
-    static Material Make(Color c, float metallic, float smooth, Color emission)
+    public static Material Make(Color c, float metallic, float smooth, Color emission)
     {
         Shader sh = Shader.Find("Tanks/GarageLit");
         Material m;
@@ -123,171 +198,452 @@ public static class ShellFx
         return m;
     }
 
-    static Material Band(Color c)
+    // Свечение одной гильзы (своя копия материала — остывает)
+    public static Material GlowMaterial()
     {
-        c.a = 1f;
-        Color key = new Color(Mathf.Round(c.r * 16f) / 16f, Mathf.Round(c.g * 16f) / 16f, Mathf.Round(c.b * 16f) / 16f, 1f);
-        Material m;
-        if (bands.TryGetValue(key, out m) && m != null) return m;
-        m = Make(key * 0.6f, 0.2f, 0.8f, key * 1.6f);
-        bands[key] = m;
+        Material m = Make(new Color(0.05f, 0.05f, 0.06f), 0.1f, 0.85f, Color.black);
+        m.name = "Casing glow";
         return m;
     }
 
-    // ---------- Меши: тела вращения вдоль z, центр — середина длины ----------
-    static void Build()
+    static void BuildPalette()
     {
-        brass = Make(new Color(0.78f, 0.6f, 0.31f), 0.85f, 0.62f, Color.black);
-        cellBody = Make(new Color(0.16f, 0.165f, 0.18f), 0.6f, 0.45f, Color.black);
-        meshes = new Mesh[3];
-        // широкая гильза: закраина, проточка, корпус, скат, короткое дульце
-        meshes[0] = Lathe("Casing Shell", new[] {
-            new Vector3(0f, 0f, 0), new Vector3(0f, 0.155f, 0), new Vector3(0.035f, 0.155f, 0), new Vector3(0.035f, 0.132f, 0),
-            new Vector3(0.065f, 0.132f, 0), new Vector3(0.075f, 0.145f, 0), new Vector3(0.80f, 0.14f, 0), new Vector3(0.88f, 0.124f, 0),
-            new Vector3(1f, 0.122f, 0), new Vector3(1f, 0.105f, 0), new Vector3(0.96f, 0f, 0) }, 14, false);
-        // винтовочная: узкая закраина, длинный корпус, крутой скат, длинное дульце
-        meshes[1] = Lathe("Casing Rifle", new[] {
-            new Vector3(0f, 0f, 0), new Vector3(0f, 0.1f, 0), new Vector3(0.03f, 0.1f, 0), new Vector3(0.03f, 0.084f, 0),
-            new Vector3(0.05f, 0.084f, 0), new Vector3(0.06f, 0.095f, 0), new Vector3(0.70f, 0.09f, 0), new Vector3(0.78f, 0.058f, 0),
-            new Vector3(1f, 0.056f, 0), new Vector3(1f, 0.045f, 0), new Vector3(0.97f, 0f, 0) }, 12, false);
-        // энергоячейка: шестигранник с фасками, посередине — светящийся пояс (подсетка 1)
-        meshes[2] = Lathe("Casing Cell", new[] {
-            new Vector3(0f, 0f, 0), new Vector3(0f, 0.11f, 0), new Vector3(0.05f, 0.155f, 0), new Vector3(0.33f, 0.155f, 0),
-            new Vector3(0.33f, 0.168f, 1), new Vector3(0.67f, 0.168f, 1), new Vector3(0.67f, 0.155f, 0), new Vector3(0.95f, 0.155f, 0),
-            new Vector3(1f, 0.11f, 0), new Vector3(1f, 0f, 0) }, 6, true);
+        palette = new Material[9];
+        palette[Brass] = Make(new Color(0.80f, 0.62f, 0.32f), 0.85f, 0.62f, Color.black);
+        palette[Primer] = Make(new Color(0.72f, 0.42f, 0.25f), 0.9f, 0.5f, Color.black);
+        palette[Soot] = Make(new Color(0.035f, 0.03f, 0.025f), 0.0f, 0.1f, Color.black);
+        palette[Composite] = Make(new Color(0.06f, 0.062f, 0.07f), 0.3f, 0.6f, Color.black);
+        palette[Glow] = Make(new Color(0.05f, 0.05f, 0.06f), 0.1f, 0.85f, Color.black);
+        palette[Chrome] = Make(new Color(0.86f, 0.87f, 0.90f), 1.0f, 0.9f, Color.black);
+        palette[Steel] = Make(new Color(0.58f, 0.59f, 0.61f), 0.9f, 0.55f, Color.black);
+        palette[Gunmetal] = Make(new Color(0.16f, 0.165f, 0.18f), 0.75f, 0.5f, Color.black);
+        palette[Copper] = Make(new Color(0.75f, 0.40f, 0.22f), 0.9f, 0.55f, Color.black);
     }
 
-    // prof — точки (z, r, подсетка отрезка до этой точки); seg — граней по кругу; flat — у граней свои вершины (шестигранник)
-    static Mesh Lathe(string name, Vector3[] prof, int seg, bool flat)
+    static PhysicsMaterial Phys(string name, float bounce, float friction)
+    {
+        PhysicsMaterial p = new PhysicsMaterial(name)
+        {
+            bounciness = bounce,
+            dynamicFriction = friction,
+            staticFriction = friction * 1.4f,
+            bounceCombine = PhysicsMaterialCombine.Maximum,
+            frictionCombine = PhysicsMaterialCombine.Average
+        };
+        return p;
+    }
+
+    // ---------- Формы ----------
+    // Точка профиля тела вращения: z (вдоль оси, в долях длины), r — радиус; sub — подсетка отрезка до этой точки,
+    // alt — подсетка нечётных граней этого отрезка (−1 — та же): узор «через грань» — продольные щели
+    struct P
+    {
+        public float z, r;
+        public int sub, alt;
+        public P(float z, float r, int sub, int alt = -1) { this.z = z; this.r = r; this.sub = sub; this.alt = alt; }
+    }
+
+    static CasingDesign Design(CasingKind kind, bool future)
+    {
+        if (designs == null) designs = new CasingDesign[12];
+        int i = (int)kind * 2 + (future ? 1 : 0);
+        if (designs[i] != null && designs[i].mesh != null) return designs[i];
+        if (palette == null || palette[0] == null) BuildPalette();
+        designs[i] = Build(kind, future);
+        return designs[i];
+    }
+
+    static readonly string[] BrassSounds = { "casing_brass_1", "casing_brass_2", "casing_brass_3" };
+    static readonly string[] HeavySounds = { "casing_heavy_1", "casing_heavy_2" };
+    static readonly string[] CellSounds = { "casing_cell_1", "casing_cell_2" };
+
+    static CasingDesign Build(CasingKind kind, bool f)
+    {
+        CasingDesign d = new CasingDesign();
+        P[] prof, hull;
+        int seg = 18, hullSeg = 8;
+        bool flat = false, loop = false;
+        float center = 0.5f;
+        switch (kind)
+        {
+            case CasingKind.HeavyShell:
+                // крупная: толстое стальное донце, широкий корпус, короткое плечо и шейка
+                prof = f ? new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.06f, Primer), new P(0f, 0.32f, Chrome), new P(0.05f, 0.32f, Chrome),
+                        new P(0.05f, 0.30f, Chrome), new P(0.10f, 0.30f, Chrome), new P(0.10f, 0.285f, Composite),
+                        new P(0.25f, 0.283f, Composite), new P(0.25f, 0.292f, Brass), new P(0.29f, 0.292f, Brass),
+                        new P(0.29f, 0.282f, Composite), new P(0.50f, 0.280f, Composite), new P(0.50f, 0.289f, Brass),
+                        new P(0.54f, 0.289f, Brass), new P(0.54f, 0.279f, Composite), new P(0.64f, 0.278f, Composite),
+                        new P(0.64f, 0.285f, Glow), new P(0.70f, 0.284f, Glow), new P(0.70f, 0.277f, Composite),
+                        new P(0.76f, 0.275f, Composite), new P(0.86f, 0.215f, Chrome), new P(1f, 0.21f, Chrome),
+                        new P(1f, 0.19f, Chrome), new P(0.84f, 0.19f, Soot), new P(0.84f, 0f, Soot) }
+                    : new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.06f, Primer), new P(0f, 0.32f, Steel), new P(0.05f, 0.32f, Steel),
+                        new P(0.05f, 0.30f, Steel), new P(0.10f, 0.30f, Steel), new P(0.10f, 0.285f, Brass),
+                        new P(0.76f, 0.275f, Brass), new P(0.86f, 0.215f, Brass), new P(1f, 0.21f, Brass),
+                        new P(1f, 0.19f, Brass), new P(0.84f, 0.19f, Soot), new P(0.84f, 0f, Soot) };
+                hull = new[] { new P(0f, 0f, 0), new P(0f, 0.32f, 0), new P(0.10f, 0.30f, 0), new P(0.76f, 0.28f, 0),
+                               new P(0.86f, 0.215f, 0), new P(1f, 0.21f, 0), new P(1f, 0f, 0) };
+                seg = 22; hullSeg = 10;
+                d.density = 260f; d.speed = 2.6f; d.spin = 9f; d.delay = 0.14f; d.powder = true;
+                d.phys = Phys("Casing heavy", 0.22f, 0.4f); d.sounds = HeavySounds; d.volume = 0.8f;
+                break;
+
+            case CasingKind.Rifle:
+                // длинная бутылочная: узкая закраина, длинный корпус, крутой скат, длинное дульце
+                prof = f ? new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.035f, Primer), new P(0f, 0.10f, Chrome), new P(0.03f, 0.10f, Chrome),
+                        new P(0.03f, 0.08f, Chrome), new P(0.05f, 0.08f, Chrome), new P(0.05f, 0.095f, Gunmetal),
+                        new P(0.30f, 0.094f, Gunmetal), new P(0.30f, 0.098f, Glow), new P(0.36f, 0.098f, Glow),
+                        new P(0.36f, 0.094f, Gunmetal), new P(0.66f, 0.09f, Gunmetal), new P(0.74f, 0.052f, Chrome),
+                        new P(1f, 0.05f, Chrome), new P(1f, 0.04f, Chrome), new P(0.9f, 0.04f, Soot), new P(0.9f, 0f, Soot) }
+                    : new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.035f, Primer), new P(0f, 0.10f, Brass), new P(0.03f, 0.10f, Brass),
+                        new P(0.03f, 0.08f, Brass), new P(0.05f, 0.08f, Brass), new P(0.05f, 0.095f, Brass),
+                        new P(0.66f, 0.09f, Brass), new P(0.74f, 0.052f, Brass), new P(1f, 0.05f, Brass),
+                        new P(1f, 0.04f, Brass), new P(0.9f, 0.04f, Soot), new P(0.9f, 0f, Soot) };
+                hull = new[] { new P(0f, 0f, 0), new P(0f, 0.10f, 0), new P(0.66f, 0.09f, 0), new P(0.74f, 0.052f, 0),
+                               new P(1f, 0.05f, 0), new P(1f, 0f, 0) };
+                seg = 14;
+                d.density = 90f; d.speed = 3.2f; d.spin = 13f; d.delay = 0.32f; d.powder = true;
+                d.phys = Phys("Casing rifle", 0.35f, 0.35f); d.sounds = BrassSounds; d.volume = 0.6f;
+                break;
+
+            case CasingKind.Cell:
+            {
+                // шестигранная конденсаторная ячейка: колпаки с фаской, пакеты катушек, светящиеся щели через грань
+                int body = f ? Composite : Gunmetal, cap = f ? Gunmetal : Steel, coil = f ? Chrome : Copper;
+                prof = new[] {
+                    new P(0f, 0f, cap), new P(0f, 0.15f, cap), new P(0.04f, 0.17f, cap), new P(0.06f, 0.17f, cap),
+                    new P(0.06f, 0.19f, body), new P(0.12f, 0.19f, body),
+                    new P(0.12f, 0.205f, coil), new P(0.15f, 0.205f, coil), new P(0.15f, 0.19f, body), new P(0.19f, 0.19f, body),
+                    new P(0.19f, 0.205f, coil), new P(0.22f, 0.205f, coil), new P(0.22f, 0.19f, body), new P(0.26f, 0.19f, body),
+                    new P(0.26f, 0.205f, coil), new P(0.29f, 0.205f, coil), new P(0.29f, 0.19f, body), new P(0.36f, 0.19f, body),
+                    new P(0.36f, 0.18f, Glow), new P(0.64f, 0.18f, Glow, body), new P(0.64f, 0.19f, body),
+                    new P(0.71f, 0.19f, body), new P(0.71f, 0.205f, coil), new P(0.74f, 0.205f, coil), new P(0.74f, 0.19f, body),
+                    new P(0.78f, 0.19f, body), new P(0.78f, 0.205f, coil), new P(0.81f, 0.205f, coil), new P(0.81f, 0.19f, body),
+                    new P(0.85f, 0.19f, body), new P(0.85f, 0.205f, coil), new P(0.88f, 0.205f, coil), new P(0.88f, 0.19f, body),
+                    new P(0.94f, 0.19f, body), new P(0.94f, 0.17f, cap), new P(0.96f, 0.17f, cap), new P(1f, 0.15f, cap),
+                    new P(1f, 0f, cap) };
+                hull = new[] { new P(0f, 0f, 0), new P(0f, 0.16f, 0), new P(0.06f, 0.2f, 0), new P(0.94f, 0.2f, 0),
+                               new P(1f, 0.16f, 0), new P(1f, 0f, 0) };
+                seg = 6; hullSeg = 6; flat = true;
+                d.density = 200f; d.speed = 2.8f; d.spin = 10f; d.delay = 0.16f;
+                d.phys = Phys("Casing cell", 0.2f, 0.45f); d.sounds = CellSounds; d.volume = 0.6f;
+                break;
+            }
+
+            case CasingKind.PlasmaCell:
+            {
+                // капсула: купола на концах, кольца, продольные светящиеся щели через грань
+                int dome = f ? Chrome : Steel, body = f ? Composite : Gunmetal, ring = f ? Glow : Copper;
+                prof = new[] {
+                    new P(0f, 0f, dome), new P(0.015f, 0.08f, dome), new P(0.05f, 0.14f, dome), new P(0.10f, 0.17f, dome),
+                    new P(0.14f, 0.18f, dome), new P(0.14f, 0.185f, ring), new P(0.18f, 0.185f, ring), new P(0.18f, 0.18f, body),
+                    new P(0.30f, 0.18f, body), new P(0.30f, 0.172f, Glow), new P(0.70f, 0.172f, Glow, body), new P(0.70f, 0.18f, body),
+                    new P(0.82f, 0.18f, body), new P(0.82f, 0.185f, ring), new P(0.86f, 0.185f, ring), new P(0.86f, 0.18f, dome),
+                    new P(0.90f, 0.17f, dome), new P(0.95f, 0.14f, dome), new P(0.985f, 0.08f, dome), new P(1f, 0f, dome) };
+                hull = new[] { new P(0f, 0f, 0), new P(0.05f, 0.14f, 0), new P(0.14f, 0.185f, 0), new P(0.86f, 0.185f, 0),
+                               new P(0.95f, 0.14f, 0), new P(1f, 0f, 0) };
+                seg = 16;
+                d.density = 150f; d.speed = 3.0f; d.spin = 12f; d.delay = 0.08f;
+                d.phys = Phys("Casing plasma", 0.28f, 0.4f); d.sounds = CellSounds; d.volume = 0.45f;
+                break;
+            }
+
+            case CasingKind.RingCell:
+            {
+                // диск-«шайба» (длина — диаметр): фаски, светящиеся внутренняя стенка и кольцо на торце
+                int face = f ? Composite : Steel, rim = f ? Chrome : Copper;
+                prof = new[] {
+                    new P(-0.08f, 0.20f, Glow), new P(-0.10f, 0.23f, face), new P(-0.10f, 0.44f, face), new P(-0.06f, 0.50f, face),
+                    new P(0.06f, 0.50f, rim), new P(0.10f, 0.44f, face), new P(0.10f, 0.36f, face), new P(0.10f, 0.31f, Glow),
+                    new P(0.10f, 0.23f, face), new P(0.08f, 0.20f, face) };
+                hull = new[] { new P(-0.10f, 0f, 0), new P(-0.10f, 0.44f, 0), new P(-0.06f, 0.50f, 0), new P(0.06f, 0.50f, 0),
+                               new P(0.10f, 0.44f, 0), new P(0.10f, 0f, 0) };
+                seg = 24; hullSeg = 10; loop = true; center = 0f;
+                d.density = 120f; d.speed = 2.8f; d.spin = 8f; d.axisSpin = 25f; d.delay = 0.12f;
+                d.phys = Phys("Casing ring", 0.3f, 0.35f); d.sounds = CellSounds; d.volume = 0.5f;
+                break;
+            }
+
+            default:   // Shell — Смоки
+                prof = f ? new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.04f, Primer), new P(0f, 0.16f, Brass), new P(0.035f, 0.16f, Brass),
+                        new P(0.035f, 0.13f, Brass), new P(0.06f, 0.13f, Brass), new P(0.06f, 0.145f, Brass),
+                        new P(0.10f, 0.145f, Brass), new P(0.10f, 0.149f, Glow), new P(0.135f, 0.149f, Glow),
+                        new P(0.135f, 0.145f, Composite), new P(0.30f, 0.142f, Composite), new P(0.30f, 0.147f, Brass),
+                        new P(0.34f, 0.147f, Brass), new P(0.34f, 0.142f, Composite), new P(0.60f, 0.139f, Composite),
+                        new P(0.60f, 0.144f, Brass), new P(0.64f, 0.144f, Brass), new P(0.64f, 0.139f, Composite),
+                        new P(0.72f, 0.138f, Composite), new P(0.80f, 0.105f, Chrome), new P(1f, 0.105f, Chrome),
+                        new P(1f, 0.088f, Chrome), new P(0.86f, 0.088f, Soot), new P(0.86f, 0f, Soot) }
+                    : new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.04f, Primer), new P(0f, 0.16f, Brass), new P(0.035f, 0.16f, Brass),
+                        new P(0.035f, 0.13f, Brass), new P(0.06f, 0.13f, Brass), new P(0.06f, 0.145f, Brass),
+                        new P(0.72f, 0.138f, Brass), new P(0.80f, 0.105f, Brass), new P(1f, 0.105f, Brass),
+                        new P(1f, 0.088f, Brass), new P(0.86f, 0.088f, Soot), new P(0.86f, 0f, Soot) };
+                hull = new[] { new P(0f, 0f, 0), new P(0f, 0.16f, 0), new P(0.72f, 0.14f, 0), new P(0.80f, 0.105f, 0),
+                               new P(1f, 0.105f, 0), new P(1f, 0f, 0) };
+                d.density = 160f; d.speed = 3.0f; d.spin = 11f; d.delay = 0.11f; d.powder = true;
+                d.phys = Phys("Casing brass", 0.32f, 0.35f); d.sounds = BrassSounds; d.volume = 0.7f;
+                break;
+        }
+
+        List<int> used;
+        d.mesh = Lathe("Casing " + kind + (f ? " M3" : ""), prof, seg, flat, loop, center, out used);
+        List<int> unusedHull;
+        d.hull = Lathe("Casing hull " + kind, hull, hullSeg, true, false, center, out unusedHull);
+        d.mats = new Material[used.Count];
+        for (int k = 0; k < used.Count; k++)
+        {
+            d.mats[k] = palette[used[k]];
+            if (used[k] == Glow) d.glowIndex = k;
+        }
+        float rMax = 0f;
+        foreach (P p in prof) rMax = Mathf.Max(rMax, p.r);
+        d.radius = rMax;
+        return d;
+    }
+
+    // Тело вращения по профилю: seg граней по кругу; flat — у граней свои вершины (гранёное), иначе — гладкое по кругу
+    // и жёсткие кромки профиля; loop — профиль замкнут (диск с отверстием). used — номера цветов подсеток по порядку
+    static Mesh Lathe(string name, P[] prof, int seg, bool flat, bool loop, float center, out List<int> used)
     {
         List<Vector3> v = new List<Vector3>();
-        List<int>[] tris = { new List<int>(), new List<int>() };
-        for (int k = 1; k < prof.Length; k++)
+        List<int>[] tris = new List<int>[9];
+        for (int i = 0; i < tris.Length; i++) tris[i] = new List<int>();
+        int n = prof.Length;
+        int last = loop ? n : n - 1;
+        for (int k = 1; k <= last; k++)
         {
-            Vector3 a = prof[k - 1], b = prof[k];
-            if (Mathf.Abs(a.y) < 1e-5f && Mathf.Abs(b.y) < 1e-5f) continue;
-            List<int> t = tris[(int)b.z];
+            P a = prof[k - 1], b = prof[k % n];
+            bool aAxis = a.r < 1e-5f, bAxis = b.r < 1e-5f;
+            if (aAxis && bAxis) continue;
+            int s0 = v.Count;
             if (flat)
             {
                 for (int i = 0; i < seg; i++)
                 {
-                    int s0 = v.Count;
-                    v.Add(P(a, i, seg)); v.Add(P(a, i + 1, seg)); v.Add(P(b, i + 1, seg)); v.Add(P(b, i, seg));
-                    Quad(t, s0, s0 + 1, s0 + 2, s0 + 3);
+                    int q = v.Count;
+                    v.Add(Pt(a, i, seg)); v.Add(Pt(a, i + 1, seg)); v.Add(Pt(b, i + 1, seg)); v.Add(Pt(b, i, seg));
+                    Quad(tris[SubOf(b, i)], q, q + 1, q + 2, q + 3, aAxis, bAxis);
                 }
             }
             else
             {
-                int s0 = v.Count;                                          // свои кольца у каждого отрезка: жёсткие кромки профиля
-                for (int i = 0; i <= seg; i++) { v.Add(P(a, i, seg)); v.Add(P(b, i, seg)); }
-                for (int i = 0; i < seg; i++) Quad(t, s0 + 2 * i, s0 + 2 * i + 2, s0 + 2 * i + 3, s0 + 2 * i + 1);
+                for (int i = 0; i <= seg; i++) { v.Add(Pt(a, i, seg)); v.Add(Pt(b, i, seg)); }
+                for (int i = 0; i < seg; i++)
+                    Quad(tris[SubOf(b, i)], s0 + 2 * i, s0 + 2 * i + 2, s0 + 2 * i + 3, s0 + 2 * i + 1, aAxis, bAxis);
             }
         }
-        for (int i = 0; i < v.Count; i++) v[i] -= new Vector3(0f, 0f, 0.5f);
+        for (int i = 0; i < v.Count; i++) v[i] -= new Vector3(0f, 0f, center);
+
+        used = new List<int>();
+        for (int i = 0; i < tris.Length; i++) if (tris[i].Count > 0) used.Add(i);
         Mesh m = new Mesh { name = name };
         m.SetVertices(v);
-        m.subMeshCount = tris[1].Count > 0 ? 2 : 1;
-        m.SetTriangles(tris[0], 0);
-        if (tris[1].Count > 0) m.SetTriangles(tris[1], 1);
+        m.subMeshCount = used.Count;
+        for (int i = 0; i < used.Count; i++) m.SetTriangles(tris[used[i]], i);
         m.RecalculateNormals();
         m.RecalculateBounds();
         return m;
     }
 
-    static Vector3 P(Vector3 prof, int i, int seg)
+    static int SubOf(P b, int facet)
     {
-        float a = Mathf.PI * 2f * i / seg;
-        return new Vector3(Mathf.Cos(a) * prof.y, Mathf.Sin(a) * prof.y, prof.x);
+        return b.alt >= 0 && (facet & 1) == 1 ? b.alt : b.sub;
     }
 
-    // Четырёхугольник a-b-c-d (a, b — на кольце ближе к донцу, по ходу угла) лицом наружу (в Unity лицо — по часовой)
-    static void Quad(List<int> t, int a, int b, int c, int d)
+    static Vector3 Pt(P p, int i, int seg)
     {
-        t.Add(a); t.Add(b); t.Add(c);
-        t.Add(a); t.Add(c); t.Add(d);
+        float a = Mathf.PI * 2f * i / seg;
+        return new Vector3(Mathf.Cos(a) * p.r, Mathf.Sin(a) * p.r, p.z);
+    }
+
+    // Четырёхугольник a-b-c-d (a, b — на кольце ближе к донцу, по ходу угла) лицом наружу (в Unity лицо — по часовой);
+    // у точки на оси один из треугольников вырожден — не пишется
+    static void Quad(List<int> t, int a, int b, int c, int d, bool aAxis, bool bAxis)
+    {
+        if (!aAxis) { t.Add(a); t.Add(b); t.Add(c); }
+        if (!bAxis) { t.Add(a); t.Add(c); t.Add(d); }
     }
 }
 
-// Одна гильза: полёт, кувырок, отскоки, лёжка, исчезновение
+// Одна гильза: выдвижение из окна выброса вместе со ствольной группой, затем физика, звук ударов, остывание, исчезновение
 public class Casing : MonoBehaviour
 {
-    Vector3 pos, vel, spin;
-    float radius, bounce, life, age, length;
-    bool resting;
-    Rigidbody owner;
-    static readonly RaycastHit[] hits = new RaycastHit[8];
+    Rigidbody rb;
+    MeshCollider col;
+    MeshRenderer mr;
+    MeshFilter mf;
+    Material glowMat;
+    Material[] mats;
 
-    public void Launch(Vector3 p, Quaternion rot, Vector3 v, Vector3 w, float len, float rel, float restitution, Rigidbody own, float lifetime)
+    CasingDesign design;
+    Transform carrier;
+    Vector3 localPos, localDir, flyDir;
+    Rigidbody owner;
+    Collider[] ownerCols;
+    Color glow;
+    float born, life, length, pushDist, lastSound;
+    int sounds;
+    bool flying;
+    bool[] ownerOn;          // столкновения со своим танком снова включены (гильза вышла из его коллайдеров)
+    float releaseTime;
+
+    void Awake()
     {
-        pos = p;
-        vel = v;
-        spin = w;
-        length = len;
-        radius = len * rel;
-        bounce = restitution;
-        owner = own;
+        rb = GetComponent<Rigidbody>();
+        col = GetComponent<MeshCollider>();
+        mr = GetComponent<MeshRenderer>();
+        mf = GetComponent<MeshFilter>();
+    }
+
+    public void Launch(CasingDesign d, Transform carrier, Vector3 localPos, Vector3 localDir, float length, Color glow,
+                       Rigidbody owner, Collider[] ownerCols, float lifetime, float push = 0f, Vector3 fly = default)
+    {
+        if (rb == null) Awake();
+        design = d;
+        this.carrier = carrier;
+        this.localPos = localPos;
+        this.localDir = localDir;
+        flyDir = fly.sqrMagnitude > 1e-6f ? fly.normalized : localDir;
+        this.length = length;
+        this.glow = glow;
+        this.owner = owner;
+        this.ownerCols = ownerCols;
         life = lifetime;
-        age = 0f;
-        resting = false;
-        transform.SetPositionAndRotation(p, rot);
-        transform.localScale = Vector3.one * len;
+        born = Time.time;
+        lastSound = -1f;
+        sounds = 0;
+        flying = false;
+        // ход выталкивания: гильза целиком выходит из окна (радиус + запас), если ход не задан моделью
+        pushDist = push > 0f ? push : length * d.radius * 1.3f + 0.02f;
+
+        mf.sharedMesh = d.mesh;
+        if (mats == null || mats.Length != d.mats.Length) mats = new Material[d.mats.Length];
+        for (int i = 0; i < mats.Length; i++) mats[i] = d.mats[i];
+        if (d.glowIndex >= 0)
+        {
+            if (glowMat == null) glowMat = ShellFx.GlowMaterial();
+            mats[d.glowIndex] = glowMat;
+            SetGlow(1f);
+        }
+        mr.sharedMaterials = mats;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+
+        col.enabled = false;
+        col.sharedMesh = d.hull;
+        col.sharedMaterial = d.phys;
+        rb.isKinematic = true;
+        rb.mass = Mathf.Clamp(d.density * length * length * length, 0.05f, 8f);
+        transform.localScale = Vector3.one * length;
+        Follow(0f);
+    }
+
+    void SetGlow(float k)
+    {
+        if (glowMat == null) return;
+        if (glowMat.HasProperty("_EmissionColor")) glowMat.SetColor("_EmissionColor", glow * k);
+        else glowMat.color = new Color(0.05f, 0.05f, 0.06f) + glow * (0.3f * k);
+    }
+
+    // Выдвижение из окна выброса: гильза следует за ствольной группой (танк едет, ствол качается)
+    void Follow(float t)
+    {
+        float e = 1f - (1f - t) * (1f - t);
+        Vector3 pos = carrier.TransformPoint(localPos + localDir * (pushDist * e / Mathf.Max(1e-4f, carrier.lossyScale.z)));
+        transform.SetPositionAndRotation(pos, carrier.rotation);
+    }
+
+    void LateUpdate()
+    {
+        if (flying) return;
+        if (carrier == null) { Release(); return; }
+        float t = (Time.time - born) / ShellFx.PushTime;
+        Follow(Mathf.Clamp01(t));
+        if (t >= 1f) Release();
+    }
+
+    // Отпустить: дальше — физика
+    void Release()
+    {
+        flying = true;
+        Vector3 axis = transform.forward;
+        Vector3 dir = carrier != null ? carrier.TransformDirection(flyDir).normalized : transform.right;
+        Vector3 baseVel = owner != null ? owner.GetPointVelocity(transform.position) : Vector3.zero;
+        col.enabled = true;
+        if (ownerCols != null)
+        {
+            foreach (Collider oc in ownerCols)
+                if (oc != null && oc.enabled && oc.gameObject.activeInHierarchy) Physics.IgnoreCollision(col, oc, true);
+            if (ownerOn == null || ownerOn.Length != ownerCols.Length) ownerOn = new bool[ownerCols.Length];
+            for (int i = 0; i < ownerOn.Length; i++) ownerOn[i] = false;
+        }
+        releaseTime = Time.time;
+        rb.isKinematic = false;
+        rb.position = transform.position;
+        rb.rotation = transform.rotation;
+        rb.linearVelocity = baseVel + (dir + Random.insideUnitSphere * 0.12f).normalized * design.speed * Random.Range(0.85f, 1.15f);
+        // кувырок вокруг оси поперёк направления вылета (+ вращение вокруг своей оси у диска)
+        Vector3 tumble = Vector3.Cross(dir, axis);
+        if (tumble.sqrMagnitude < 1e-4f) tumble = transform.up;
+        rb.angularVelocity = tumble.normalized * design.spin * Random.Range(0.8f, 1.2f) +
+                             axis * (design.axisSpin > 0f ? design.axisSpin * Random.Range(0.8f, 1.2f) : Random.Range(-4f, 4f));
+        Vector3 mouth = transform.position + axis * length * 0.5f;
+        if (design.powder) ParticleFx.SmokePuff(mouth, 1, Mathf.Clamp(length * 0.45f, 0.05f, 0.14f));
+        if (ShellFx.AllowSound(mouth)) Sfx.PlayAt("casing_eject", mouth, 0.45f, Random.Range(0.92f, 1.08f));
     }
 
     void Update()
     {
-        float dt = Time.deltaTime;
-        age += dt;
-        if (!resting && dt > 0f)
-        {
-            vel += Physics.gravity * dt;
-            vel *= 1f - Mathf.Min(1f, 0.2f * dt);
-            Vector3 step = vel * dt;
-            float d = step.magnitude;
-            RaycastHit h;
-            if (d > 1e-5f && Cast(step / d, d + radius, out h))
-            {
-                Vector3 vn = Vector3.Dot(vel, h.normal) * h.normal;
-                Vector3 vt = vel - vn;
-                vel = vt * 0.6f - vn * bounce;
-                pos = h.point + h.normal * radius;
-                spin = spin * 0.55f + Vector3.Cross(h.normal, vt) / Mathf.Max(0.01f, radius) * 0.15f;   // покатилась
-                if (vel.magnitude < 0.45f && h.normal.y > 0.6f && h.rigidbody == null) Rest(h.normal);
-            }
-            else pos += step;
-            if (!resting)
-            {
-                float w = spin.magnitude;
-                transform.rotation = w > 1e-3f ? Quaternion.AngleAxis(w * dt * Mathf.Rad2Deg, spin / w) * transform.rotation : transform.rotation;
-                transform.position = pos;
-            }
-            if (pos.y < -50f) age = life;                                   // упала за край карты
-        }
+        if (!flying) return;
+        float age = Time.time - born;
+        if (design.glowIndex >= 0) SetGlow(0.18f + 0.82f * Mathf.Exp(-age * 0.9f));   // отработанная ячейка остывает
         float fade = life - 0.6f;
         if (age > fade) transform.localScale = Vector3.one * length * Mathf.Clamp01(1f - (age - fade) / 0.6f);
-        if (age >= life) ShellFx.Release(this);
+        if (age >= life || transform.position.y < -50f) ShellFx.Release(this);
+        else RestoreOwnerCollisions();
     }
 
-    // Ближайшее попадание луча, кроме своего танка и триггеров
-    bool Cast(Vector3 dir, float dist, out RaycastHit best)
+    // Пока гильза внутри коллайдеров своего танка, столкновения с ними выключены; как только вышла — включаем,
+    // чтобы она падала на корпус (выброс назад над кормой) и скатывалась с него, а не проваливалась сквозь
+    void RestoreOwnerCollisions()
     {
-        best = default(RaycastHit);
-        int n = Physics.RaycastNonAlloc(pos, dir, hits, dist, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-        float bd = float.MaxValue;
-        bool found = false;
-        for (int i = 0; i < n; i++)
+        if (ownerCols == null || ownerOn == null) return;
+        float t = Time.time - releaseTime;
+        if (t < 0.05f || t > 3f) return;
+        for (int i = 0; i < ownerCols.Length; i++)
         {
-            if (owner != null && hits[i].rigidbody == owner) continue;
-            if (hits[i].distance < bd) { bd = hits[i].distance; best = hits[i]; found = true; }
+            if (ownerOn[i]) continue;
+            Collider oc = ownerCols[i];
+            if (oc == null || !oc.enabled || oc.isTrigger || !oc.gameObject.activeInHierarchy) { ownerOn[i] = true; continue; }
+            Vector3 dir; float dist;
+            bool overlap = Physics.ComputePenetration(col, transform.position, transform.rotation,
+                                                      oc, oc.transform.position, oc.transform.rotation, out dir, out dist);
+            if (!overlap)
+            {
+                Physics.IgnoreCollision(col, oc, false);
+                ownerOn[i] = true;
+            }
         }
-        return found;
     }
 
-    // Легла набок: ось гильзы — вдоль поверхности
-    void Rest(Vector3 normal)
+    void OnCollisionEnter(Collision c)
     {
-        resting = true;
-        Vector3 axis = Vector3.ProjectOnPlane(transform.forward, normal);
-        if (axis.sqrMagnitude < 1e-4f) axis = Vector3.ProjectOnPlane(transform.up, normal);
-        transform.SetPositionAndRotation(pos, Quaternion.LookRotation(axis.normalized, normal));
+        if (!flying || design == null || design.sounds == null || design.sounds.Length == 0) return;
+        float v = c.relativeVelocity.magnitude;
+        if (v < 0.9f || sounds >= 6 || Time.time - lastSound < 0.08f) return;
+        Vector3 p = c.contactCount > 0 ? c.GetContact(0).point : transform.position;
+        if (!ShellFx.AllowSound(p)) return;
+        lastSound = Time.time;
+        sounds++;
+        float vol = Mathf.Clamp01((v - 0.6f) / 4f) * design.volume;
+        Sfx.PlayAt(design.sounds[Random.Range(0, design.sounds.Length)], p, vol, Random.Range(0.92f, 1.08f));
+    }
+
+    void OnDestroy()
+    {
+        if (glowMat != null) Destroy(glowMat);
     }
 }

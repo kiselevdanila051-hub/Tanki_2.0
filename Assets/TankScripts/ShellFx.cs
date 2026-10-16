@@ -488,6 +488,8 @@ public class Casing : MonoBehaviour
     float born, life, length, pushDist, lastSound;
     int sounds;
     bool flying;
+    bool[] ownerOn;          // столкновения со своим танком снова включены (гильза вышла из его коллайдеров)
+    float releaseTime;
 
     void Awake()
     {
@@ -572,8 +574,13 @@ public class Casing : MonoBehaviour
         Vector3 baseVel = owner != null ? owner.GetPointVelocity(transform.position) : Vector3.zero;
         col.enabled = true;
         if (ownerCols != null)
+        {
             foreach (Collider oc in ownerCols)
                 if (oc != null && oc.enabled && oc.gameObject.activeInHierarchy) Physics.IgnoreCollision(col, oc, true);
+            if (ownerOn == null || ownerOn.Length != ownerCols.Length) ownerOn = new bool[ownerCols.Length];
+            for (int i = 0; i < ownerOn.Length; i++) ownerOn[i] = false;
+        }
+        releaseTime = Time.time;
         rb.isKinematic = false;
         rb.position = transform.position;
         rb.rotation = transform.rotation;
@@ -596,6 +603,30 @@ public class Casing : MonoBehaviour
         float fade = life - 0.6f;
         if (age > fade) transform.localScale = Vector3.one * length * Mathf.Clamp01(1f - (age - fade) / 0.6f);
         if (age >= life || transform.position.y < -50f) ShellFx.Release(this);
+        else RestoreOwnerCollisions();
+    }
+
+    // Пока гильза внутри коллайдеров своего танка, столкновения с ними выключены; как только вышла — включаем,
+    // чтобы она падала на корпус (выброс назад над кормой) и скатывалась с него, а не проваливалась сквозь
+    void RestoreOwnerCollisions()
+    {
+        if (ownerCols == null || ownerOn == null) return;
+        float t = Time.time - releaseTime;
+        if (t < 0.05f || t > 3f) return;
+        for (int i = 0; i < ownerCols.Length; i++)
+        {
+            if (ownerOn[i]) continue;
+            Collider oc = ownerCols[i];
+            if (oc == null || !oc.enabled || oc.isTrigger || !oc.gameObject.activeInHierarchy) { ownerOn[i] = true; continue; }
+            Vector3 dir; float dist;
+            bool overlap = Physics.ComputePenetration(col, transform.position, transform.rotation,
+                                                      oc, oc.transform.position, oc.transform.rotation, out dir, out dist);
+            if (!overlap)
+            {
+                Physics.IgnoreCollision(col, oc, false);
+                ownerOn[i] = true;
+            }
+        }
     }
 
     void OnCollisionEnter(Collision c)

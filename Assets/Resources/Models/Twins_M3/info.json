@@ -1,41 +1,144 @@
 {
-    "modelName":  "Twins_M3",
-    "scale":  0.0011573871604673785,
-    "height":  0.46,
-    "gunPivot":  {
-                     "x":  0.0,
-                     "y":  0.0769,
-                     "z":  0.6852
-                 },
-    "muzzle":  {
-                   "x":  0.0,
-                   "y":  0.00010000000000000286,
-                   "z":  0.7738
-               },
-    "muzzleSide":  0.317,
-    "color":  [
-                  0.42,
-                  0.47,
-                  0.3
-              ],
-    "smoothness":  0.25,
-    "metallic":  0.15,
-    "recoilDist":  0.045,
-    "eject":  {
-                  "x":  0.427,
-                  "y":  0.1081,
-                  "z":  0.0648
-              },
-    "ejectDir":  {
-                     "x":  1.0,
-                     "y":  0.7,
-                     "z":  -0.3
-                 },
-    "casing":  0.12,
-    "laser":  {
-                  "x":  0.317,
-                  "y":  0.1781,
-                  "z":  0.0428
-              },
-    "laserOnBarrel":  true
+    "modelName": "Twins_M3",
+    "scale": 0.0011573871604673785,
+    "height": 0.48,
+    "gunPivot": {
+        "x": 0.0,
+        "y": 0.0769,
+        "z": 0.6852
+    },
+    "muzzle": {
+        "x": 0.0,
+        "y": 0.00010000000000000286,
+        "z": 0.7738
+    },
+    "muzzleSide": 0.317,
+    "color": [
+        0.42,
+        0.47,
+        0.3
+    ],
+    "smoothness": 0.25,
+    "metallic": 0.15,
+    "recoilDist": 0.045,
+    "eject": {
+        "x": 0.428,
+        "y": 0.0,
+        "z": 0.12
+    },
+    "ejectDir": {
+        "x": 1.0,
+        "y": 0.2,
+        "z": -0.15
+    },
+    "casing": 0.14,
+    "laser": {
+        "x": 0.317,
+        "y": 0.1781,
+        "z": 0.0428
+    },
+    "laserOnBarrel": true,
+    "mechanism": [
+        {
+            "angle": 100.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": -0.04,
+            "open": 0.04,
+            "hold": 0.1,
+            "close": 0.08,
+            "mesh": "eject_flap_r",
+            "onTurret": false,
+            "hinge": {
+                "x": 0.4685,
+                "y": 0.042,
+                "z": 0.12
+            },
+            "axis": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 1.0
+            }
+        },
+        {
+            "angle": 100.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": -0.04,
+            "open": 0.04,
+            "hold": 0.1,
+            "close": 0.08,
+            "mesh": "eject_flap_l",
+            "onTurret": false,
+            "hinge": {
+                "x": -0.4685,
+                "y": 0.042,
+                "z": 0.12
+            },
+            "axis": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": -1.0
+            }
+        },
+        {
+            "axis": {
+                "x": 1.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "angle": 0.0,
+            "lead": 0.0,
+            "open": 0.07,
+            "hold": 0.0,
+            "close": 0.08,
+            "mesh": "eject_kick_r",
+            "onTurret": false,
+            "hinge": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "slide": {
+                "x": 0.045,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "axis": {
+                "x": 1.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "angle": 0.0,
+            "lead": 0.0,
+            "open": 0.07,
+            "hold": 0.0,
+            "close": 0.08,
+            "mesh": "eject_kick_l",
+            "onTurret": false,
+            "hinge": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "slide": {
+                "x": -0.045,
+                "y": 0.0,
+                "z": 0.0
+            }
+        }
+    ],
+    "glow": [
+        0.45,
+        3.0,
+        0.8
+    ]
 }

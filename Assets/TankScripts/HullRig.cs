@@ -87,6 +87,7 @@ public class GunInfo
     public bool ejectOnTurret;        // окно выброса на башне (eject / ejectDir — в координатах башни), иначе — на ствольной группе
     public float ejectPush;           // ход выталкивания гильзы из окна, м (0 — по её радиусу: вбок из окна); вдоль оси — не меньше длины
     public RigPoint ejectFly;         // куда гильза летит после выталкивания (0 — по ejectDir): порт выталкивает вдоль оси, вылет — вверх-вбок
+    public RigPoint ejectAxis;        // ось гильзы в окне выброса (координаты файла OBJ; нет — вдоль оси z): лежит поперёк, если люк так вырезан
     public MechPart[] mechanism;      // подвижные детали механизма выброса (шторки, толкатель) — TankShooter двигает их при выстреле
     public SpinnerPart spinner;       // вращающаяся деталь (турбина Фриза)
     public float[] color;             // цвет, если у модели нет текстуры

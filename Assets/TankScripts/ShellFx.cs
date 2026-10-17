@@ -87,14 +87,14 @@ public static class ShellFx
     // (HDR); owner — свой танк (с ним гильза не сталкивается);
     // push — ход выталкивания из окна, м (0 — по радиусу гильзы: вбок из окна; вдоль оси — задаётся не меньше длины)
     public static void Eject(Transform carrier, Vector3 localPos, Vector3 localDir, float length, CasingKind kind, int mk,
-                             Color glow, Rigidbody owner, float push = 0f, Vector3 fly = default)
+                             Color glow, Rigidbody owner, float push = 0f, Vector3 fly = default, Vector3 axis = default)
     {
         if (RingTest.NoFx || length <= 0f || carrier == null) return;
         CasingDesign d = Design(kind, mk);
         Casing c = Rent();
         active.Add(c);
         c.Launch(d, carrier, localPos, localDir.sqrMagnitude > 1e-6f ? localDir.normalized : Vector3.right, length, glow,
-                 owner, OwnerColliders(owner), Random.Range(7f, 9f), push, fly);
+                 owner, OwnerColliders(owner), Random.Range(7f, 9f), push, fly, axis);
     }
 
     static Collider[] OwnerColliders(Rigidbody owner)
@@ -569,6 +569,7 @@ public class Casing : MonoBehaviour
     CasingDesign design;
     Transform carrier;
     Vector3 localPos, localDir, flyDir;
+    Quaternion axisRot = Quaternion.identity;   // ось гильзы в окне выброса относительно оси z носителя
     Rigidbody owner;
     Collider[] ownerCols;
     Color glow;
@@ -587,9 +588,11 @@ public class Casing : MonoBehaviour
     }
 
     public void Launch(CasingDesign d, Transform carrier, Vector3 localPos, Vector3 localDir, float length, Color glow,
-                       Rigidbody owner, Collider[] ownerCols, float lifetime, float push = 0f, Vector3 fly = default)
+                       Rigidbody owner, Collider[] ownerCols, float lifetime, float push = 0f, Vector3 fly = default,
+                       Vector3 axis = default)
     {
         if (rb == null) Awake();
+        axisRot = axis.sqrMagnitude > 1e-6f ? Quaternion.FromToRotation(Vector3.forward, axis.normalized) : Quaternion.identity;
         design = d;
         this.carrier = carrier;
         this.localPos = localPos;
@@ -640,7 +643,7 @@ public class Casing : MonoBehaviour
     {
         float e = 1f - (1f - t) * (1f - t);
         Vector3 pos = carrier.TransformPoint(localPos + localDir * (pushDist * e / Mathf.Max(1e-4f, carrier.lossyScale.z)));
-        transform.SetPositionAndRotation(pos, carrier.rotation);
+        transform.SetPositionAndRotation(pos, carrier.rotation * axisRot);
     }
 
     void LateUpdate()

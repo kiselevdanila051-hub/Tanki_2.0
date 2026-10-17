@@ -1,28 +1,102 @@
 {
-    "modelName":  "Thunder_M0",
-    "scale":  0.0013406940063091482,
-    "height":  0.4402,
-    "gunPivot":  {
-                     "x":  0.0,
-                     "y":  0.2011,
-                     "z":  0.606
-                 },
-    "muzzle":  {
-                   "x":  0.0,
-                   "y":  0.06030000000000002,
-                   "z":  0.8486999999999999
-               },
-    "color":  [
-                  0.42,
-                  0.47,
-                  0.3
-              ],
-    "smoothness":  0.25,
-    "metallic":  0.15,
-    "laser":  {
-                  "x":  0.118,
-                  "y":  -0.02,
-                  "z":  0.3946
-              },
-    "laserOnBarrel":  true
+    "modelName": "Thunder_M0",
+    "scale": 0.0013406940063091482,
+    "height": 0.4402,
+    "gunPivot": {
+        "x": 0.0,
+        "y": 0.2011,
+        "z": 0.606
+    },
+    "muzzle": {
+        "x": 0.0,
+        "y": 0.06030000000000002,
+        "z": 0.8486999999999999
+    },
+    "color": [
+        0.42,
+        0.47,
+        0.3
+    ],
+    "smoothness": 0.25,
+    "metallic": 0.15,
+    "laser": {
+        "x": 0.118,
+        "y": -0.02,
+        "z": 0.3946
+    },
+    "laserOnBarrel": true,
+    "eject": {
+        "x": -0.02,
+        "y": 0.3075,
+        "z": -0.72
+    },
+    "ejectDir": {
+        "x": 0.0,
+        "y": 1.0,
+        "z": 0.0
+    },
+    "casing": 0.15,
+    "ejectOnTurret": true,
+    "ejectPush": 0.117,
+    "ejectFly": {
+        "x": 0.0,
+        "y": 1.0,
+        "z": -0.75
+    },
+    "ejectAxis": {
+        "x": 1.0,
+        "y": 0.0,
+        "z": 0.0
+    },
+    "mechanism": [
+        {
+            "mesh": "eject_door",
+            "onTurret": true,
+            "hinge": {
+                "x": 0.17,
+                "y": 0.356,
+                "z": -0.66
+            },
+            "axis": {
+                "x": 0.0,
+                "y": 1.0,
+                "z": 0.0
+            },
+            "angle": 120.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": -0.08,
+            "open": 0.08,
+            "hold": 0.3,
+            "close": 0.2
+        },
+        {
+            "mesh": "eject_kicker",
+            "onTurret": true,
+            "hinge": {
+                "x": -0.02,
+                "y": 0.251,
+                "z": -0.7665
+            },
+            "axis": {
+                "x": -1.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "angle": 23.6,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": 0.0,
+            "open": 0.06,
+            "hold": 0.06,
+            "close": 0.14
+        }
+    ],
+    "recoilDist": 0.0
 }

@@ -1,28 +1,97 @@
 {
-    "modelName":  "Smoky_M0",
-    "scale":  0.00096592228228463,
-    "height":  0.4428,
-    "gunPivot":  {
-                     "x":  0.0,
-                     "y":  0.15,
-                     "z":  0.5
-                 },
-    "muzzle":  {
-                   "x":  0.0,
-                   "y":  0.0,
-                   "z":  0.8500000000000001
-               },
-    "color":  [
-                  0.42,
-                  0.47,
-                  0.3
-              ],
-    "smoothness":  0.25,
-    "metallic":  0.15,
-    "laser":  {
-                  "x":  0.215,
-                  "y":  0.015,
-                  "z":  0.1346
-              },
-    "laserOnBarrel":  true
+    "modelName": "Smoky_M0",
+    "scale": 0.00096592228228463,
+    "height": 0.4428,
+    "gunPivot": {
+        "x": 0.0,
+        "y": 0.15,
+        "z": 0.5
+    },
+    "muzzle": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.8500000000000001
+    },
+    "color": [
+        0.42,
+        0.47,
+        0.3
+    ],
+    "smoothness": 0.25,
+    "metallic": 0.15,
+    "laser": {
+        "x": 0.215,
+        "y": 0.015,
+        "z": 0.1346
+    },
+    "laserOnBarrel": true,
+    "eject": {
+        "x": 0.3257,
+        "y": 0.188,
+        "z": -0.03
+    },
+    "ejectDir": {
+        "x": 0.9909,
+        "y": 0.1344,
+        "z": 0.0
+    },
+    "casing": 0.155,
+    "ejectOnTurret": true,
+    "ejectPush": 0.072,
+    "ejectFly": {
+        "x": 1.0,
+        "y": 0.5,
+        "z": -0.3
+    },
+    "mechanism": [
+        {
+            "mesh": "eject_door",
+            "onTurret": true,
+            "hinge": {
+                "x": 0.3468,
+                "y": 0.2615,
+                "z": -0.03
+            },
+            "axis": {
+                "x": -0.0,
+                "y": -0.0,
+                "z": 1.0
+            },
+            "angle": 110.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": -0.08,
+            "open": 0.08,
+            "hold": 0.3,
+            "close": 0.2
+        },
+        {
+            "mesh": "eject_kicker",
+            "onTurret": true,
+            "hinge": {
+                "x": 0.2945,
+                "y": 0.1588,
+                "z": -0.03
+            },
+            "axis": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": -1.0
+            },
+            "angle": 23.6,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": 0.0,
+            "open": 0.06,
+            "hold": 0.06,
+            "close": 0.14
+        }
+    ],
+    "recoilDist": 0.06
 }

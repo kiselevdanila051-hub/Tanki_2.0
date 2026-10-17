@@ -32,9 +32,10 @@ public class TankShooter : MonoBehaviour
     float recoilDist, casingLength;
     Vector3 ejectLocal, ejectDirLocal;
     CasingKind casingKind;
-    bool recoilActive, ejectPending, casingFuture;
+    bool recoilActive, ejectPending;
+    int casingMk;                                 // модификация пушки: у каждого поколения своя гильза
     float ejectTime, ejectSign, ejectPush;
-    Vector3 ejectFlyLocal;
+    Vector3 ejectFlyLocal, ejectAxisLocal;
     Color casingGlow;
     Transform ejectCarrier;                       // к чему привязано окно выброса: ствольная группа или башня
     const float KickBack = 0.045f, KickHold = 0.03f, KickReturn = 0.42f;   // фазы отката, с
@@ -192,10 +193,10 @@ public class TankShooter : MonoBehaviour
     // ---------- Откат и гильзы ----------
     // parts — подвижные части (у Твинса по одной на ствол: какая откатывается — по стороне дула), dist — ход, м модели;
     // eject / ejectDir — окно выброса и направление в осях ствольной группы (уже с отражением x), casing — длина гильзы;
-    // future — гильза М3 (композит, хром, свечение), glow — цвет её светящихся частей; carrier — башня, если окно выброса
-    // на ней (null — на ствольной группе), push — ход выталкивания гильзы из окна (0 — по её радиусу)
+    // mk — модификация пушки (у каждого поколения своя гильза), glow — цвет её светящихся частей; carrier — башня, если окно выброса
+    // на ней (null — на ствольной группе), push — ход выталкивания гильзы из окна (0 — по её радиусу), axis — ось гильзы в окне
     public void SetRecoil(Transform[] parts, float dist, Vector3 eject, Vector3 ejectDir, float casing, CasingKind kind,
-                          bool future, Color glow, Transform carrier = null, float push = 0f, Vector3 fly = default)
+                          int mk, Color glow, Transform carrier = null, float push = 0f, Vector3 fly = default, Vector3 axis = default)
     {
         recoilParts = parts != null && parts.Length > 0 ? parts : null;
         int n = recoilParts != null ? recoilParts.Length : 0;
@@ -213,11 +214,12 @@ public class TankShooter : MonoBehaviour
         ejectDirLocal = ejectDir.sqrMagnitude > 1e-6f ? ejectDir.normalized : Vector3.right;
         casingLength = casing;
         casingKind = kind;
-        casingFuture = future;
+        casingMk = mk;
         casingGlow = glow;
         ejectCarrier = carrier;
         ejectPush = push;
         ejectFlyLocal = fly;
+        ejectAxisLocal = axis.sqrMagnitude > 1e-6f ? axis.normalized : Vector3.forward;
         recoilActive = ejectPending = false;
         mechParts = null;
         mechActive = false;
@@ -354,19 +356,20 @@ public class TankShooter : MonoBehaviour
 
     void EjectCasing()
     {
-        Vector3 lp = ejectLocal, ld = ejectDirLocal, lf = ejectFlyLocal;
+        Vector3 lp = ejectLocal, ld = ejectDirLocal, lf = ejectFlyLocal, la = ejectAxisLocal;
         if (ejectSign != 0f)                                  // два ствола: окно у того, что выстрелил (зеркально по x)
         {
             lp.x = Mathf.Abs(lp.x) * ejectSign;
             ld.x = Mathf.Abs(ld.x) * ejectSign;
             lf.x = Mathf.Abs(lf.x) * ejectSign;
+            la.x = Mathf.Abs(la.x) * ejectSign;
         }
         Transform carrier = ejectCarrier != null ? ejectCarrier : gunPivot;
         Vector3 pos = carrier.TransformPoint(lp);
         Camera cam = Camera.main;
         if (cam != null && (pos - cam.transform.position).sqrMagnitude > 80f * 80f) return;   // вдали гильз не видно
         float k = carrier.lossyScale.z;
-        ShellFx.Eject(carrier, lp, ld, casingLength * k, casingKind, casingFuture, GlowPrefs.Resolve(casingGlow), rb, ejectPush * k, lf);
+        ShellFx.Eject(carrier, lp, ld, casingLength * k, casingKind, casingMk, GlowPrefs.Resolve(casingGlow), rb, ejectPush * k, lf, la);
     }
 
     // Наклон башни (её «вперёд») к горизонту, градусы (+ нос башни вверх)

@@ -1,42 +1,147 @@
 {
-    "modelName":  "Twins_M2",
-    "scale":  0.0011025317270596934,
-    "height":  0.512,
-    "gunPivot":  {
-                     "x":  0.0,
-                     "y":  0.105,
-                     "z":  0.6099
-                 },
-    "muzzle":  {
-                   "x":  0.0,
-                   "y":  0.0,
-                   "z":  0.8272
-               },
-    "muzzleSide":  0.348,
-    "color":  [
-                  0.42,
-                  0.47,
-                  0.3
-              ],
-    "smoothness":  0.25,
-    "metallic":  0.15,
-    "laser":  {
-                  "x":  0.5075,
-                  "y":  0.0102,
-                  "z":  0.1751
-              },
-    "laserOnBarrel":  true,
-    "destructible":  true,
-    "recoilDist":  0.045,
-    "eject":  {
-                  "x":  0.4,
-                  "y":  0.107,
-                  "z":  0.1351
-              },
-    "ejectDir":  {
-                     "x":  0.55,
-                     "y":  1.0,
-                     "z":  -0.35
-                 },
-    "casing":  0.12
+    "modelName": "Twins_M2",
+    "scale": 0.0011025317270596934,
+    "height": 0.512,
+    "gunPivot": {
+        "x": 0.0,
+        "y": 0.105,
+        "z": 0.6099
+    },
+    "muzzle": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.8272
+    },
+    "muzzleSide": 0.348,
+    "color": [
+        0.42,
+        0.47,
+        0.3
+    ],
+    "smoothness": 0.25,
+    "metallic": 0.15,
+    "laser": {
+        "x": 0.5075,
+        "y": 0.0102,
+        "z": 0.1751
+    },
+    "laserOnBarrel": true,
+    "destructible": true,
+    "recoilDist": 0.045,
+    "eject": {
+        "x": 0.34,
+        "y": 0.11,
+        "z": -0.453
+    },
+    "ejectDir": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": -1.0
+    },
+    "casing": 0.13,
+    "ejectOnTurret": true,
+    "ejectPush": 0.156,
+    "ejectFly": {
+        "x": 0.25,
+        "y": 0.5,
+        "z": -1.0
+    },
+    "mechanism": [
+        {
+            "mesh": "eject_door_r",
+            "onTurret": true,
+            "hinge": {
+                "x": 0.34,
+                "y": 0.155,
+                "z": -0.526
+            },
+            "axis": {
+                "x": 1.0,
+                "y": -0.0,
+                "z": -0.0
+            },
+            "angle": 110.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": -0.08,
+            "open": 0.08,
+            "hold": 0.3,
+            "close": 0.2
+        },
+        {
+            "mesh": "eject_rammer_r",
+            "onTurret": true,
+            "hinge": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "axis": {
+                "x": 1.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "angle": 0.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": -0.04
+            },
+            "lead": 0.0,
+            "open": 0.07,
+            "hold": 0.05,
+            "close": 0.15
+        },
+        {
+            "mesh": "eject_door_l",
+            "onTurret": true,
+            "hinge": {
+                "x": -0.34,
+                "y": 0.155,
+                "z": -0.526
+            },
+            "axis": {
+                "x": 1.0,
+                "y": -0.0,
+                "z": -0.0
+            },
+            "angle": 110.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "lead": -0.08,
+            "open": 0.08,
+            "hold": 0.3,
+            "close": 0.2
+        },
+        {
+            "mesh": "eject_rammer_l",
+            "onTurret": true,
+            "hinge": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "axis": {
+                "x": 1.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "angle": 0.0,
+            "slide": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": -0.04
+            },
+            "lead": 0.0,
+            "open": 0.07,
+            "hold": 0.05,
+            "close": 0.15
+        }
+    ]
 }

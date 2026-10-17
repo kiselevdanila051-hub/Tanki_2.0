@@ -1,15 +1,21 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// Гильзы и отработанные энергоячейки (TankShooter.EjectCasing → ShellFx.Eject). У каждой пушки своя форма, у М3 — свой
-// «технологичный» вариант (композит, хром, светящиеся пояса):
-//   Shell      — Смоки: бутылочная латунная гильза с закраиной и капсюлем; М3 — композитная, латунные пояса, хромированное
-//                дульце, светящееся кольцо;
-//   HeavyShell — Гром: крупная гильза с толстым стальным донцем, коротким плечом и шейкой;
-//   Rifle      — Шафт: длинная винтовочная; М3 — воронёная с хромом и светящимся пояском;
-//   Cell       — Рельса: шестигранная конденсаторная ячейка с медными катушками и светящимися щелями;
-//   PlasmaCell — Твинс: плазменная капсула со светящимися продольными щелями;
-//   RingCell   — Рикошет: энергетический диск-«шайба» со светящимся внутренним кольцом.
+// Гильзы и отработанные энергоячейки (TankShooter.EjectCasing → ShellFx.Eject). У каждой пушки своя форма, и у каждого
+// поколения модификаций — свой вариант (М0 — простая лакированная сталь / медь без свечения, М1 — латунь, М2 — латунь
+// и сталь с никелированными деталями и полимерными поясами, М3 — «технологичный»: композит, хром, светящиеся пояса):
+//   Shell      — Смоки: М0 стальная лакированная с короткой шейкой, М1 латунная бутылочная, М2 латунь с никелированным
+//                донцем и полимерным поясом, М3 композитная с латунными поясами, хромированным дульцем, светящимся кольцом;
+//   HeavyShell — Гром: крупная гильза с толстым донцем: М0 цельностальная прямостенная, М1 латунь со стальным донцем,
+//                М2 воронёный корпус с латунными поясами, М3 композит с хромом и светящимся пояском;
+//   Rifle      — Шафт: длинная винтовочная: М0 стальная лакированная, М1 латунная, М2 латунь с никелированными шейкой
+//                и донцем, М3 воронёная с хромом и светящимся пояском;
+//   Cell       — Рельса: конденсаторная ячейка с катушками: М0 шестигранная без свечения (разряжена в ноль), М1
+//                шестигранная со светящимися щелями, М2 восьмигранная с хромированными колпаками, М3 композит с хромом;
+//   PlasmaCell — Твинс: плазменная капсула: М0 цилиндр с плоскими торцами без свечения, М1 с куполами и светящимися
+//                щелями, М2 с хромированными куполами, М3 светящиеся кольца;
+//   RingCell   — Рикошет: диск-«шайба»: М0 толстая стальная без свечения, М1 с медным ободом и светящимся кольцом,
+//                М2 воронёная с хромированным ободом, М3 композит с хромом.
 // Выброс анимирован: гильза выдвигается из окна выброса вместе со ствольной группой (PushTime; окно открывает шторка —
 // TankShooter), затем отпускается и дальше живёт по физике: Rigidbody с выпуклым коллайдером по форме (бутылочная катится
 // по дуге, шестигранная — с перекатом, диск встаёт на ребро или ложится), отскакивает от земли, стен и чужих танков,
@@ -43,7 +49,7 @@ public static class ShellFx
     static readonly List<Casing> active = new List<Casing>();
     static readonly Stack<Casing> pool = new Stack<Casing>();
     static readonly Dictionary<Rigidbody, Collider[]> ownerColliders = new Dictionary<Rigidbody, Collider[]>();
-    static CasingDesign[] designs;                  // [вид · 2 + (М3 ? 1 : 0)]
+    static CasingDesign[] designs;                  // [вид · 4 + модификация]
     static Material[] palette;
     static Material baseMat;
     static Transform root;
@@ -52,8 +58,9 @@ public static class ShellFx
     const int SoundsPerWindow = 6;
 
     // Подсетки-цвета: 0 латунь, 1 медь капсюля, 2 копоть внутри, 3 композит, 4 свечение, 5 хром, 6 сталь, 7 воронёная сталь,
-    // 8 медь катушек
-    const int Brass = 0, Primer = 1, Soot = 2, Composite = 3, Glow = 4, Chrome = 5, Steel = 6, Gunmetal = 7, Copper = 8;
+    // 8 медь катушек, 9 лакированная сталь (М0)
+    const int Brass = 0, Primer = 1, Soot = 2, Composite = 3, Glow = 4, Chrome = 5, Steel = 6, Gunmetal = 7, Copper = 8, Lacquer = 9;
+    const int Colors = 10;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetCache()
@@ -72,21 +79,22 @@ public static class ShellFx
     // Задержка выброса после выстрела по виду (затвор открывается, шторка окна — чуть раньше)
     public static float EjectDelay(CasingKind kind)
     {
-        return Design(kind, false).delay;
+        return Design(kind, 1).delay;
     }
 
     // carrier — ствольная группа (ось качания), localPos / localDir — окно выброса и направление вылета в её осях,
-    // length — длина гильзы, м; glow — цвет светящихся частей (HDR); owner — свой танк (с ним гильза не сталкивается);
+    // length — длина гильзы, м; mk — модификация пушки (у каждого поколения своя гильза); glow — цвет светящихся частей
+    // (HDR); owner — свой танк (с ним гильза не сталкивается);
     // push — ход выталкивания из окна, м (0 — по радиусу гильзы: вбок из окна; вдоль оси — задаётся не меньше длины)
-    public static void Eject(Transform carrier, Vector3 localPos, Vector3 localDir, float length, CasingKind kind, bool future,
-                             Color glow, Rigidbody owner, float push = 0f, Vector3 fly = default)
+    public static void Eject(Transform carrier, Vector3 localPos, Vector3 localDir, float length, CasingKind kind, int mk,
+                             Color glow, Rigidbody owner, float push = 0f, Vector3 fly = default, Vector3 axis = default)
     {
         if (RingTest.NoFx || length <= 0f || carrier == null) return;
-        CasingDesign d = Design(kind, future);
+        CasingDesign d = Design(kind, mk);
         Casing c = Rent();
         active.Add(c);
         c.Launch(d, carrier, localPos, localDir.sqrMagnitude > 1e-6f ? localDir.normalized : Vector3.right, length, glow,
-                 owner, OwnerColliders(owner), Random.Range(7f, 9f), push, fly);
+                 owner, OwnerColliders(owner), Random.Range(7f, 9f), push, fly, axis);
     }
 
     static Collider[] OwnerColliders(Rigidbody owner)
@@ -208,7 +216,7 @@ public static class ShellFx
 
     static void BuildPalette()
     {
-        palette = new Material[9];
+        palette = new Material[Colors];
         palette[Brass] = Make(new Color(0.80f, 0.62f, 0.32f), 0.85f, 0.62f, Color.black);
         palette[Primer] = Make(new Color(0.72f, 0.42f, 0.25f), 0.9f, 0.5f, Color.black);
         palette[Soot] = Make(new Color(0.035f, 0.03f, 0.025f), 0.0f, 0.1f, Color.black);
@@ -218,6 +226,7 @@ public static class ShellFx
         palette[Steel] = Make(new Color(0.58f, 0.59f, 0.61f), 0.9f, 0.55f, Color.black);
         palette[Gunmetal] = Make(new Color(0.16f, 0.165f, 0.18f), 0.75f, 0.5f, Color.black);
         palette[Copper] = Make(new Color(0.75f, 0.40f, 0.22f), 0.9f, 0.55f, Color.black);
+        palette[Lacquer] = Make(new Color(0.30f, 0.31f, 0.24f), 0.55f, 0.42f, Color.black);
     }
 
     static PhysicsMaterial Phys(string name, float bounce, float friction)
@@ -243,13 +252,14 @@ public static class ShellFx
         public P(float z, float r, int sub, int alt = -1) { this.z = z; this.r = r; this.sub = sub; this.alt = alt; }
     }
 
-    static CasingDesign Design(CasingKind kind, bool future)
+    static CasingDesign Design(CasingKind kind, int mk)
     {
-        if (designs == null) designs = new CasingDesign[12];
-        int i = (int)kind * 2 + (future ? 1 : 0);
+        mk = Mathf.Clamp(mk, 0, 3);
+        if (designs == null) designs = new CasingDesign[6 * 4];
+        int i = (int)kind * 4 + mk;
         if (designs[i] != null && designs[i].mesh != null) return designs[i];
         if (palette == null || palette[0] == null) BuildPalette();
-        designs[i] = Build(kind, future);
+        designs[i] = Build(kind, mk);
         return designs[i];
     }
 
@@ -257,7 +267,7 @@ public static class ShellFx
     static readonly string[] HeavySounds = { "casing_heavy_1", "casing_heavy_2" };
     static readonly string[] CellSounds = { "casing_cell_1", "casing_cell_2" };
 
-    static CasingDesign Build(CasingKind kind, bool f)
+    static CasingDesign Build(CasingKind kind, int mk)
     {
         CasingDesign d = new CasingDesign();
         P[] prof, hull;
@@ -267,8 +277,30 @@ public static class ShellFx
         switch (kind)
         {
             case CasingKind.HeavyShell:
-                // крупная: толстое стальное донце, широкий корпус, короткое плечо и шейка
-                prof = f ? new[] {
+                // крупная: толстое донце, широкий корпус, короткое плечо и шейка
+                if (mk <= 0)            // цельностальная лакированная, прямые стенки, короткий скат без шейки
+                    prof = new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.07f, Primer), new P(0f, 0.31f, Lacquer), new P(0.06f, 0.31f, Lacquer),
+                        new P(0.06f, 0.285f, Lacquer), new P(0.09f, 0.285f, Lacquer), new P(0.09f, 0.29f, Lacquer),
+                        new P(0.82f, 0.28f, Lacquer), new P(0.92f, 0.23f, Lacquer), new P(1f, 0.225f, Lacquer),
+                        new P(1f, 0.20f, Lacquer), new P(0.86f, 0.20f, Soot), new P(0.86f, 0f, Soot) };
+                else if (mk == 1)       // латунь со стальным донцем
+                    prof = new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.06f, Primer), new P(0f, 0.32f, Steel), new P(0.05f, 0.32f, Steel),
+                        new P(0.05f, 0.30f, Steel), new P(0.10f, 0.30f, Steel), new P(0.10f, 0.285f, Brass),
+                        new P(0.76f, 0.275f, Brass), new P(0.86f, 0.215f, Brass), new P(1f, 0.21f, Brass),
+                        new P(1f, 0.19f, Brass), new P(0.84f, 0.19f, Soot), new P(0.84f, 0f, Soot) };
+                else if (mk == 2)       // воронёный корпус, стальное донце с хромированной закраиной, два латунных пояса
+                    prof = new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.06f, Primer), new P(0f, 0.32f, Chrome), new P(0.05f, 0.32f, Chrome),
+                        new P(0.05f, 0.30f, Steel), new P(0.10f, 0.30f, Steel), new P(0.10f, 0.285f, Gunmetal),
+                        new P(0.30f, 0.283f, Gunmetal), new P(0.30f, 0.291f, Brass), new P(0.36f, 0.291f, Brass),
+                        new P(0.36f, 0.281f, Gunmetal), new P(0.62f, 0.278f, Gunmetal), new P(0.62f, 0.286f, Brass),
+                        new P(0.68f, 0.286f, Brass), new P(0.68f, 0.277f, Gunmetal), new P(0.76f, 0.275f, Gunmetal),
+                        new P(0.86f, 0.215f, Brass), new P(1f, 0.21f, Brass),
+                        new P(1f, 0.19f, Brass), new P(0.84f, 0.19f, Soot), new P(0.84f, 0f, Soot) };
+                else
+                    prof = new[] {
                         new P(0f, 0f, Primer), new P(0f, 0.06f, Primer), new P(0f, 0.32f, Chrome), new P(0.05f, 0.32f, Chrome),
                         new P(0.05f, 0.30f, Chrome), new P(0.10f, 0.30f, Chrome), new P(0.10f, 0.285f, Composite),
                         new P(0.25f, 0.283f, Composite), new P(0.25f, 0.292f, Brass), new P(0.29f, 0.292f, Brass),
@@ -276,58 +308,82 @@ public static class ShellFx
                         new P(0.54f, 0.289f, Brass), new P(0.54f, 0.279f, Composite), new P(0.64f, 0.278f, Composite),
                         new P(0.64f, 0.285f, Glow), new P(0.70f, 0.284f, Glow), new P(0.70f, 0.277f, Composite),
                         new P(0.76f, 0.275f, Composite), new P(0.86f, 0.215f, Chrome), new P(1f, 0.21f, Chrome),
-                        new P(1f, 0.19f, Chrome), new P(0.84f, 0.19f, Soot), new P(0.84f, 0f, Soot) }
-                    : new[] {
-                        new P(0f, 0f, Primer), new P(0f, 0.06f, Primer), new P(0f, 0.32f, Steel), new P(0.05f, 0.32f, Steel),
-                        new P(0.05f, 0.30f, Steel), new P(0.10f, 0.30f, Steel), new P(0.10f, 0.285f, Brass),
-                        new P(0.76f, 0.275f, Brass), new P(0.86f, 0.215f, Brass), new P(1f, 0.21f, Brass),
-                        new P(1f, 0.19f, Brass), new P(0.84f, 0.19f, Soot), new P(0.84f, 0f, Soot) };
-                hull = new[] { new P(0f, 0f, 0), new P(0f, 0.32f, 0), new P(0.10f, 0.30f, 0), new P(0.76f, 0.28f, 0),
-                               new P(0.86f, 0.215f, 0), new P(1f, 0.21f, 0), new P(1f, 0f, 0) };
-                seg = 22; hullSeg = 10;
+                        new P(1f, 0.19f, Chrome), new P(0.84f, 0.19f, Soot), new P(0.84f, 0f, Soot) };
+                hull = mk <= 0
+                    ? new[] { new P(0f, 0f, 0), new P(0f, 0.31f, 0), new P(0.82f, 0.28f, 0), new P(0.92f, 0.23f, 0),
+                              new P(1f, 0.225f, 0), new P(1f, 0f, 0) }
+                    : new[] { new P(0f, 0f, 0), new P(0f, 0.32f, 0), new P(0.10f, 0.30f, 0), new P(0.76f, 0.28f, 0),
+                              new P(0.86f, 0.215f, 0), new P(1f, 0.21f, 0), new P(1f, 0f, 0) };
+                seg = mk <= 0 ? 16 : 22; hullSeg = 10;
                 d.density = 260f; d.speed = 2.6f; d.spin = 9f; d.delay = 0.14f; d.powder = true;
                 d.phys = Phys("Casing heavy", 0.22f, 0.4f); d.sounds = HeavySounds; d.volume = 0.8f;
                 break;
 
             case CasingKind.Rifle:
                 // длинная бутылочная: узкая закраина, длинный корпус, крутой скат, длинное дульце
-                prof = f ? new[] {
-                        new P(0f, 0f, Primer), new P(0f, 0.035f, Primer), new P(0f, 0.10f, Chrome), new P(0.03f, 0.10f, Chrome),
-                        new P(0.03f, 0.08f, Chrome), new P(0.05f, 0.08f, Chrome), new P(0.05f, 0.095f, Gunmetal),
-                        new P(0.30f, 0.094f, Gunmetal), new P(0.30f, 0.098f, Glow), new P(0.36f, 0.098f, Glow),
-                        new P(0.36f, 0.094f, Gunmetal), new P(0.66f, 0.09f, Gunmetal), new P(0.74f, 0.052f, Chrome),
-                        new P(1f, 0.05f, Chrome), new P(1f, 0.04f, Chrome), new P(0.9f, 0.04f, Soot), new P(0.9f, 0f, Soot) }
-                    : new[] {
+                if (mk <= 0)
+                    prof = new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.035f, Primer), new P(0f, 0.10f, Lacquer), new P(0.03f, 0.10f, Lacquer),
+                        new P(0.03f, 0.08f, Lacquer), new P(0.05f, 0.08f, Lacquer), new P(0.05f, 0.096f, Lacquer),
+                        new P(0.70f, 0.09f, Lacquer), new P(0.80f, 0.055f, Lacquer), new P(1f, 0.052f, Lacquer),
+                        new P(1f, 0.042f, Lacquer), new P(0.9f, 0.042f, Soot), new P(0.9f, 0f, Soot) };
+                else if (mk == 1)
+                    prof = new[] {
                         new P(0f, 0f, Primer), new P(0f, 0.035f, Primer), new P(0f, 0.10f, Brass), new P(0.03f, 0.10f, Brass),
                         new P(0.03f, 0.08f, Brass), new P(0.05f, 0.08f, Brass), new P(0.05f, 0.095f, Brass),
                         new P(0.66f, 0.09f, Brass), new P(0.74f, 0.052f, Brass), new P(1f, 0.05f, Brass),
                         new P(1f, 0.04f, Brass), new P(0.9f, 0.04f, Soot), new P(0.9f, 0f, Soot) };
+                else if (mk == 2)       // латунь, никелированные донце и дульце, чёрный полимерный поясок
+                    prof = new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.035f, Primer), new P(0f, 0.10f, Chrome), new P(0.03f, 0.10f, Chrome),
+                        new P(0.03f, 0.08f, Chrome), new P(0.05f, 0.08f, Chrome), new P(0.05f, 0.095f, Brass),
+                        new P(0.40f, 0.093f, Brass), new P(0.40f, 0.097f, Composite), new P(0.47f, 0.097f, Composite),
+                        new P(0.47f, 0.092f, Brass), new P(0.66f, 0.09f, Brass), new P(0.74f, 0.052f, Chrome),
+                        new P(1f, 0.05f, Chrome), new P(1f, 0.04f, Chrome), new P(0.9f, 0.04f, Soot), new P(0.9f, 0f, Soot) };
+                else
+                    prof = new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.035f, Primer), new P(0f, 0.10f, Chrome), new P(0.03f, 0.10f, Chrome),
+                        new P(0.03f, 0.08f, Chrome), new P(0.05f, 0.08f, Chrome), new P(0.05f, 0.095f, Gunmetal),
+                        new P(0.30f, 0.094f, Gunmetal), new P(0.30f, 0.098f, Glow), new P(0.36f, 0.098f, Glow),
+                        new P(0.36f, 0.094f, Gunmetal), new P(0.66f, 0.09f, Gunmetal), new P(0.74f, 0.052f, Chrome),
+                        new P(1f, 0.05f, Chrome), new P(1f, 0.04f, Chrome), new P(0.9f, 0.04f, Soot), new P(0.9f, 0f, Soot) };
                 hull = new[] { new P(0f, 0f, 0), new P(0f, 0.10f, 0), new P(0.66f, 0.09f, 0), new P(0.74f, 0.052f, 0),
                                new P(1f, 0.05f, 0), new P(1f, 0f, 0) };
-                seg = 14;
+                seg = mk <= 0 ? 12 : 14;
                 d.density = 90f; d.speed = 3.2f; d.spin = 13f; d.delay = 0.32f; d.powder = true;
                 d.phys = Phys("Casing rifle", 0.35f, 0.35f); d.sounds = BrassSounds; d.volume = 0.6f;
                 break;
 
             case CasingKind.Cell:
             {
-                // шестигранная конденсаторная ячейка: колпаки с фаской, пакеты катушек, светящиеся щели через грань
-                int body = f ? Composite : Gunmetal, cap = f ? Gunmetal : Steel, coil = f ? Chrome : Copper;
-                prof = new[] {
-                    new P(0f, 0f, cap), new P(0f, 0.15f, cap), new P(0.04f, 0.17f, cap), new P(0.06f, 0.17f, cap),
-                    new P(0.06f, 0.19f, body), new P(0.12f, 0.19f, body),
-                    new P(0.12f, 0.205f, coil), new P(0.15f, 0.205f, coil), new P(0.15f, 0.19f, body), new P(0.19f, 0.19f, body),
-                    new P(0.19f, 0.205f, coil), new P(0.22f, 0.205f, coil), new P(0.22f, 0.19f, body), new P(0.26f, 0.19f, body),
-                    new P(0.26f, 0.205f, coil), new P(0.29f, 0.205f, coil), new P(0.29f, 0.19f, body), new P(0.36f, 0.19f, body),
-                    new P(0.36f, 0.18f, Glow), new P(0.64f, 0.18f, Glow, body), new P(0.64f, 0.19f, body),
-                    new P(0.71f, 0.19f, body), new P(0.71f, 0.205f, coil), new P(0.74f, 0.205f, coil), new P(0.74f, 0.19f, body),
-                    new P(0.78f, 0.19f, body), new P(0.78f, 0.205f, coil), new P(0.81f, 0.205f, coil), new P(0.81f, 0.19f, body),
-                    new P(0.85f, 0.19f, body), new P(0.85f, 0.205f, coil), new P(0.88f, 0.205f, coil), new P(0.88f, 0.19f, body),
-                    new P(0.94f, 0.19f, body), new P(0.94f, 0.17f, cap), new P(0.96f, 0.17f, cap), new P(1f, 0.15f, cap),
-                    new P(1f, 0f, cap) };
+                // конденсаторная ячейка: колпаки с фаской, пакеты катушек, щели через грань (у М0 — тёмные, разряжена)
+                int body = mk >= 2 ? Composite : Gunmetal, cap = mk == 2 ? Chrome : mk >= 3 ? Gunmetal : Steel;
+                int coil = mk >= 3 ? Chrome : Copper, slit = mk <= 0 ? Soot : Glow;
+                if (mk <= 0)
+                    prof = new[] {
+                        new P(0f, 0f, cap), new P(0f, 0.15f, cap), new P(0.04f, 0.17f, cap), new P(0.07f, 0.17f, cap),
+                        new P(0.07f, 0.19f, body), new P(0.13f, 0.19f, body),
+                        new P(0.13f, 0.205f, coil), new P(0.20f, 0.205f, coil), new P(0.20f, 0.19f, body), new P(0.38f, 0.19f, body),
+                        new P(0.38f, 0.182f, slit), new P(0.62f, 0.182f, slit, body), new P(0.62f, 0.19f, body),
+                        new P(0.80f, 0.19f, body), new P(0.80f, 0.205f, coil), new P(0.87f, 0.205f, coil), new P(0.87f, 0.19f, body),
+                        new P(0.93f, 0.19f, body), new P(0.93f, 0.17f, cap), new P(0.96f, 0.17f, cap), new P(1f, 0.15f, cap),
+                        new P(1f, 0f, cap) };
+                else
+                    prof = new[] {
+                        new P(0f, 0f, cap), new P(0f, 0.15f, cap), new P(0.04f, 0.17f, cap), new P(0.06f, 0.17f, cap),
+                        new P(0.06f, 0.19f, body), new P(0.12f, 0.19f, body),
+                        new P(0.12f, 0.205f, coil), new P(0.15f, 0.205f, coil), new P(0.15f, 0.19f, body), new P(0.19f, 0.19f, body),
+                        new P(0.19f, 0.205f, coil), new P(0.22f, 0.205f, coil), new P(0.22f, 0.19f, body), new P(0.26f, 0.19f, body),
+                        new P(0.26f, 0.205f, coil), new P(0.29f, 0.205f, coil), new P(0.29f, 0.19f, body), new P(0.36f, 0.19f, body),
+                        new P(0.36f, 0.18f, slit), new P(0.64f, 0.18f, slit, body), new P(0.64f, 0.19f, body),
+                        new P(0.71f, 0.19f, body), new P(0.71f, 0.205f, coil), new P(0.74f, 0.205f, coil), new P(0.74f, 0.19f, body),
+                        new P(0.78f, 0.19f, body), new P(0.78f, 0.205f, coil), new P(0.81f, 0.205f, coil), new P(0.81f, 0.19f, body),
+                        new P(0.85f, 0.19f, body), new P(0.85f, 0.205f, coil), new P(0.88f, 0.205f, coil), new P(0.88f, 0.19f, body),
+                        new P(0.94f, 0.19f, body), new P(0.94f, 0.17f, cap), new P(0.96f, 0.17f, cap), new P(1f, 0.15f, cap),
+                        new P(1f, 0f, cap) };
                 hull = new[] { new P(0f, 0f, 0), new P(0f, 0.16f, 0), new P(0.06f, 0.2f, 0), new P(0.94f, 0.2f, 0),
                                new P(1f, 0.16f, 0), new P(1f, 0f, 0) };
-                seg = 6; hullSeg = 6; flat = true;
+                seg = mk == 2 ? 8 : 6; hullSeg = seg; flat = true;
                 d.density = 200f; d.speed = 2.8f; d.spin = 10f; d.delay = 0.16f;
                 d.phys = Phys("Casing cell", 0.2f, 0.45f); d.sounds = CellSounds; d.volume = 0.6f;
                 break;
@@ -335,17 +391,29 @@ public static class ShellFx
 
             case CasingKind.PlasmaCell:
             {
-                // капсула: купола на концах, кольца, продольные светящиеся щели через грань
-                int dome = f ? Chrome : Steel, body = f ? Composite : Gunmetal, ring = f ? Glow : Copper;
-                prof = new[] {
-                    new P(0f, 0f, dome), new P(0.015f, 0.08f, dome), new P(0.05f, 0.14f, dome), new P(0.10f, 0.17f, dome),
-                    new P(0.14f, 0.18f, dome), new P(0.14f, 0.185f, ring), new P(0.18f, 0.185f, ring), new P(0.18f, 0.18f, body),
-                    new P(0.30f, 0.18f, body), new P(0.30f, 0.172f, Glow), new P(0.70f, 0.172f, Glow, body), new P(0.70f, 0.18f, body),
-                    new P(0.82f, 0.18f, body), new P(0.82f, 0.185f, ring), new P(0.86f, 0.185f, ring), new P(0.86f, 0.18f, dome),
-                    new P(0.90f, 0.17f, dome), new P(0.95f, 0.14f, dome), new P(0.985f, 0.08f, dome), new P(1f, 0f, dome) };
-                hull = new[] { new P(0f, 0f, 0), new P(0.05f, 0.14f, 0), new P(0.14f, 0.185f, 0), new P(0.86f, 0.185f, 0),
-                               new P(0.95f, 0.14f, 0), new P(1f, 0f, 0) };
-                seg = 16;
+                // капсула: купола на концах (у М0 — плоские торцы), кольца, продольные щели через грань
+                int dome = mk >= 2 ? Chrome : Steel, body = mk >= 3 ? Composite : Gunmetal;
+                int ring = mk >= 3 ? Glow : Copper, slit = mk <= 0 ? Soot : Glow;
+                if (mk <= 0)
+                    prof = new[] {
+                        new P(0f, 0f, dome), new P(0f, 0.15f, dome), new P(0.03f, 0.18f, dome), new P(0.10f, 0.18f, dome),
+                        new P(0.10f, 0.188f, ring), new P(0.16f, 0.188f, ring), new P(0.16f, 0.18f, body),
+                        new P(0.32f, 0.18f, body), new P(0.32f, 0.172f, slit), new P(0.68f, 0.172f, slit, body), new P(0.68f, 0.18f, body),
+                        new P(0.84f, 0.18f, body), new P(0.84f, 0.188f, ring), new P(0.90f, 0.188f, ring), new P(0.90f, 0.18f, dome),
+                        new P(0.97f, 0.18f, dome), new P(1f, 0.15f, dome), new P(1f, 0f, dome) };
+                else
+                    prof = new[] {
+                        new P(0f, 0f, dome), new P(0.015f, 0.08f, dome), new P(0.05f, 0.14f, dome), new P(0.10f, 0.17f, dome),
+                        new P(0.14f, 0.18f, dome), new P(0.14f, 0.185f, ring), new P(0.18f, 0.185f, ring), new P(0.18f, 0.18f, body),
+                        new P(0.30f, 0.18f, body), new P(0.30f, 0.172f, slit), new P(0.70f, 0.172f, slit, body), new P(0.70f, 0.18f, body),
+                        new P(0.82f, 0.18f, body), new P(0.82f, 0.185f, ring), new P(0.86f, 0.185f, ring), new P(0.86f, 0.18f, dome),
+                        new P(0.90f, 0.17f, dome), new P(0.95f, 0.14f, dome), new P(0.985f, 0.08f, dome), new P(1f, 0f, dome) };
+                hull = mk <= 0
+                    ? new[] { new P(0f, 0f, 0), new P(0f, 0.15f, 0), new P(0.03f, 0.188f, 0), new P(0.97f, 0.188f, 0),
+                              new P(1f, 0.15f, 0), new P(1f, 0f, 0) }
+                    : new[] { new P(0f, 0f, 0), new P(0.05f, 0.14f, 0), new P(0.14f, 0.185f, 0), new P(0.86f, 0.185f, 0),
+                              new P(0.95f, 0.14f, 0), new P(1f, 0f, 0) };
+                seg = mk <= 0 ? 12 : 16;
                 d.density = 150f; d.speed = 3.0f; d.spin = 12f; d.delay = 0.08f;
                 d.phys = Phys("Casing plasma", 0.28f, 0.4f); d.sounds = CellSounds; d.volume = 0.45f;
                 break;
@@ -353,22 +421,45 @@ public static class ShellFx
 
             case CasingKind.RingCell:
             {
-                // диск-«шайба» (длина — диаметр): фаски, светящиеся внутренняя стенка и кольцо на торце
-                int face = f ? Composite : Steel, rim = f ? Chrome : Copper;
+                // диск-«шайба» (длина — диаметр): фаски, внутренняя стенка и кольцо на торце (у М0 — без свечения, толще)
+                int face = mk >= 3 ? Composite : mk == 2 ? Gunmetal : Steel, rim = mk >= 2 ? Chrome : Copper;
+                int lit = mk <= 0 ? Soot : Glow;
+                float t = mk <= 0 ? 0.13f : 0.10f;
                 prof = new[] {
-                    new P(-0.08f, 0.20f, Glow), new P(-0.10f, 0.23f, face), new P(-0.10f, 0.44f, face), new P(-0.06f, 0.50f, face),
-                    new P(0.06f, 0.50f, rim), new P(0.10f, 0.44f, face), new P(0.10f, 0.36f, face), new P(0.10f, 0.31f, Glow),
-                    new P(0.10f, 0.23f, face), new P(0.08f, 0.20f, face) };
-                hull = new[] { new P(-0.10f, 0f, 0), new P(-0.10f, 0.44f, 0), new P(-0.06f, 0.50f, 0), new P(0.06f, 0.50f, 0),
-                               new P(0.10f, 0.44f, 0), new P(0.10f, 0f, 0) };
-                seg = 24; hullSeg = 10; loop = true; center = 0f;
+                    new P(-t + 0.02f, 0.20f, lit), new P(-t, 0.23f, face), new P(-t, 0.44f, face), new P(-t + 0.04f, 0.50f, face),
+                    new P(t - 0.04f, 0.50f, rim), new P(t, 0.44f, face), new P(t, 0.36f, face), new P(t, 0.31f, mk <= 0 ? face : Glow),
+                    new P(t, 0.23f, face), new P(t - 0.02f, 0.20f, face) };
+                hull = new[] { new P(-t, 0f, 0), new P(-t, 0.44f, 0), new P(-t + 0.04f, 0.50f, 0), new P(t - 0.04f, 0.50f, 0),
+                               new P(t, 0.44f, 0), new P(t, 0f, 0) };
+                seg = mk <= 0 ? 16 : 24; hullSeg = 10; loop = true; center = 0f;
                 d.density = 120f; d.speed = 2.8f; d.spin = 8f; d.axisSpin = 25f; d.delay = 0.12f;
                 d.phys = Phys("Casing ring", 0.3f, 0.35f); d.sounds = CellSounds; d.volume = 0.5f;
                 break;
             }
 
             default:   // Shell — Смоки
-                prof = f ? new[] {
+                if (mk <= 0)            // стальная лакированная: закраина, конусный корпус, короткий скат и шейка
+                    prof = new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.045f, Primer), new P(0f, 0.158f, Lacquer), new P(0.04f, 0.158f, Lacquer),
+                        new P(0.04f, 0.13f, Lacquer), new P(0.065f, 0.13f, Lacquer), new P(0.065f, 0.148f, Lacquer),
+                        new P(0.78f, 0.132f, Lacquer), new P(0.86f, 0.108f, Lacquer), new P(1f, 0.106f, Lacquer),
+                        new P(1f, 0.09f, Lacquer), new P(0.88f, 0.09f, Soot), new P(0.88f, 0f, Soot) };
+                else if (mk == 1)
+                    prof = new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.04f, Primer), new P(0f, 0.16f, Brass), new P(0.035f, 0.16f, Brass),
+                        new P(0.035f, 0.13f, Brass), new P(0.06f, 0.13f, Brass), new P(0.06f, 0.145f, Brass),
+                        new P(0.72f, 0.138f, Brass), new P(0.80f, 0.105f, Brass), new P(1f, 0.105f, Brass),
+                        new P(1f, 0.088f, Brass), new P(0.86f, 0.088f, Soot), new P(0.86f, 0f, Soot) };
+                else if (mk == 2)       // латунь, никелированное донце, полимерный поясок, обжатое дульце
+                    prof = new[] {
+                        new P(0f, 0f, Primer), new P(0f, 0.04f, Primer), new P(0f, 0.16f, Chrome), new P(0.035f, 0.16f, Chrome),
+                        new P(0.035f, 0.13f, Chrome), new P(0.06f, 0.13f, Chrome), new P(0.06f, 0.145f, Brass),
+                        new P(0.38f, 0.142f, Brass), new P(0.38f, 0.147f, Composite), new P(0.46f, 0.147f, Composite),
+                        new P(0.46f, 0.141f, Brass), new P(0.72f, 0.138f, Brass), new P(0.80f, 0.105f, Brass),
+                        new P(0.94f, 0.105f, Brass), new P(0.94f, 0.109f, Chrome), new P(1f, 0.109f, Chrome),
+                        new P(1f, 0.088f, Chrome), new P(0.86f, 0.088f, Soot), new P(0.86f, 0f, Soot) };
+                else
+                    prof = new[] {
                         new P(0f, 0f, Primer), new P(0f, 0.04f, Primer), new P(0f, 0.16f, Brass), new P(0.035f, 0.16f, Brass),
                         new P(0.035f, 0.13f, Brass), new P(0.06f, 0.13f, Brass), new P(0.06f, 0.145f, Brass),
                         new P(0.10f, 0.145f, Brass), new P(0.10f, 0.149f, Glow), new P(0.135f, 0.149f, Glow),
@@ -376,21 +467,17 @@ public static class ShellFx
                         new P(0.34f, 0.147f, Brass), new P(0.34f, 0.142f, Composite), new P(0.60f, 0.139f, Composite),
                         new P(0.60f, 0.144f, Brass), new P(0.64f, 0.144f, Brass), new P(0.64f, 0.139f, Composite),
                         new P(0.72f, 0.138f, Composite), new P(0.80f, 0.105f, Chrome), new P(1f, 0.105f, Chrome),
-                        new P(1f, 0.088f, Chrome), new P(0.86f, 0.088f, Soot), new P(0.86f, 0f, Soot) }
-                    : new[] {
-                        new P(0f, 0f, Primer), new P(0f, 0.04f, Primer), new P(0f, 0.16f, Brass), new P(0.035f, 0.16f, Brass),
-                        new P(0.035f, 0.13f, Brass), new P(0.06f, 0.13f, Brass), new P(0.06f, 0.145f, Brass),
-                        new P(0.72f, 0.138f, Brass), new P(0.80f, 0.105f, Brass), new P(1f, 0.105f, Brass),
-                        new P(1f, 0.088f, Brass), new P(0.86f, 0.088f, Soot), new P(0.86f, 0f, Soot) };
+                        new P(1f, 0.088f, Chrome), new P(0.86f, 0.088f, Soot), new P(0.86f, 0f, Soot) };
                 hull = new[] { new P(0f, 0f, 0), new P(0f, 0.16f, 0), new P(0.72f, 0.14f, 0), new P(0.80f, 0.105f, 0),
                                new P(1f, 0.105f, 0), new P(1f, 0f, 0) };
+                seg = mk <= 0 ? 14 : 18;
                 d.density = 160f; d.speed = 3.0f; d.spin = 11f; d.delay = 0.11f; d.powder = true;
                 d.phys = Phys("Casing brass", 0.32f, 0.35f); d.sounds = BrassSounds; d.volume = 0.7f;
                 break;
         }
 
         List<int> used;
-        d.mesh = Lathe("Casing " + kind + (f ? " M3" : ""), prof, seg, flat, loop, center, out used);
+        d.mesh = Lathe("Casing " + kind + " M" + mk, prof, seg, flat, loop, center, out used);
         List<int> unusedHull;
         d.hull = Lathe("Casing hull " + kind, hull, hullSeg, true, false, center, out unusedHull);
         d.mats = new Material[used.Count];
@@ -410,7 +497,7 @@ public static class ShellFx
     static Mesh Lathe(string name, P[] prof, int seg, bool flat, bool loop, float center, out List<int> used)
     {
         List<Vector3> v = new List<Vector3>();
-        List<int>[] tris = new List<int>[9];
+        List<int>[] tris = new List<int>[Colors];
         for (int i = 0; i < tris.Length; i++) tris[i] = new List<int>();
         int n = prof.Length;
         int last = loop ? n : n - 1;
@@ -482,6 +569,7 @@ public class Casing : MonoBehaviour
     CasingDesign design;
     Transform carrier;
     Vector3 localPos, localDir, flyDir;
+    Quaternion axisRot = Quaternion.identity;   // ось гильзы в окне выброса относительно оси z носителя
     Rigidbody owner;
     Collider[] ownerCols;
     Color glow;
@@ -500,9 +588,11 @@ public class Casing : MonoBehaviour
     }
 
     public void Launch(CasingDesign d, Transform carrier, Vector3 localPos, Vector3 localDir, float length, Color glow,
-                       Rigidbody owner, Collider[] ownerCols, float lifetime, float push = 0f, Vector3 fly = default)
+                       Rigidbody owner, Collider[] ownerCols, float lifetime, float push = 0f, Vector3 fly = default,
+                       Vector3 axis = default)
     {
         if (rb == null) Awake();
+        axisRot = axis.sqrMagnitude > 1e-6f ? Quaternion.FromToRotation(Vector3.forward, axis.normalized) : Quaternion.identity;
         design = d;
         this.carrier = carrier;
         this.localPos = localPos;
@@ -553,7 +643,7 @@ public class Casing : MonoBehaviour
     {
         float e = 1f - (1f - t) * (1f - t);
         Vector3 pos = carrier.TransformPoint(localPos + localDir * (pushDist * e / Mathf.Max(1e-4f, carrier.lossyScale.z)));
-        transform.SetPositionAndRotation(pos, carrier.rotation);
+        transform.SetPositionAndRotation(pos, carrier.rotation * axisRot);
     }
 
     void LateUpdate()

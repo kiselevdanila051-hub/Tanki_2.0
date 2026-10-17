@@ -196,11 +196,13 @@ public class TankBuilder : MonoBehaviour
         if (gm != null && gm.info.ejectDir != null) ejectDir = new Vector3(-gm.info.ejectDir.x, gm.info.ejectDir.y, gm.info.ejectDir.z);
         Vector3 ejectFly = Vector3.zero;
         if (gm != null && gm.info.ejectFly != null) ejectFly = new Vector3(-gm.info.ejectFly.x, gm.info.ejectFly.y, gm.info.ejectFly.z);
+        Vector3 ejectAxis = Vector3.forward;
+        if (gm != null && gm.info.ejectAxis != null) ejectAxis = new Vector3(-gm.info.ejectAxis.x, gm.info.ejectAxis.y, gm.info.ejectAxis.z);
         Color glow = gm != null && gm.info.glow != null && gm.info.glow.Length >= 3
             ? new Color(gm.info.glow[0], gm.info.glow[1], gm.info.glow[2]) : gun.FlashColor * 2.2f;
         shooter.SetRecoil(recoilParts.ToArray(), gm != null ? gm.info.recoilDist : 0f, ejectAt, ejectDir,
-                          gm != null && gm.info.eject != null ? gm.info.casing : 0f, CasingOf(gunType), gunModification >= 3, glow,
-                          gm != null && gm.info.ejectOnTurret ? turret.transform : null, gm != null ? gm.info.ejectPush : 0f, ejectFly);
+                          gm != null && gm.info.eject != null ? gm.info.casing : 0f, CasingOf(gunType), gunModification, glow,
+                          gm != null && gm.info.ejectOnTurret ? turret.transform : null, gm != null ? gm.info.ejectPush : 0f, ejectFly, ejectAxis);
         // Механизм выброса: ось поворота при отражении x — (−x, y, z) с обратным углом, сдвиг — (−x, y, z)
         if (mechParts.Count > 0) shooter.SetMechanism(mechParts.ToArray(), mechInfo.ToArray());
         if (spinner != null) spinner.shooter = shooter;

@@ -26,71 +26,48 @@
     },
     "laserOnBarrel": true,
     "eject": {
-        "x": 0.0,
-        "y": 0.33,
-        "z": -0.317
+        "x": 0.105,
+        "y": 0.38,
+        "z": -0.135
     },
     "ejectDir": {
-        "x": 0.0,
-        "y": 0.0,
-        "z": -1.0
+        "x": 0.75,
+        "y": 0.66,
+        "z": 0.0
     },
     "casing": 0.11,
     "ejectOnTurret": true,
-    "ejectPush": 0.056,
+    "ejectPush": 0.05,
     "ejectFly": {
-        "x": 0.0,
-        "y": 0.45,
-        "z": -1.0
+        "x": 0.85,
+        "y": 0.55,
+        "z": -0.15
     },
     "mechanism": [
         {
-            "mesh": "eject_door",
+            "mesh": "eject_drum",
             "onTurret": true,
             "hinge": {
                 "x": 0.0,
-                "y": 0.48,
-                "z": -0.34
+                "y": 0.33,
+                "z": -0.3519
             },
             "axis": {
-                "x": 1.0,
-                "y": -0.0,
-                "z": -0.0
+                "x": 0.0,
+                "y": 0.0,
+                "z": 1.0
             },
-            "angle": 110.0,
+            "angle": 45.0,
             "slide": {
                 "x": 0.0,
                 "y": 0.0,
                 "z": 0.0
             },
-            "lead": -0.08,
-            "open": 0.08,
-            "hold": 0.3,
-            "close": 0.2
-        },
-        {
-            "mesh": "eject_rammer",
-            "onTurret": true,
-            "hinge": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
-            },
-            "axis": {
-                "x": 1.0,
-                "y": 0.0,
-                "z": 0.0
-            },
-            "angle": 0.0,
-            "slide": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": -0.0136
-            },
-            "lead": 0.0,
-            "open": 0.07,
-            "hold": 0.05,
-            "close": 0.15
+            "lead": -0.05,
+            "open": 0.11,
+            "hold": 0.0,
+            "close": 0.01,
+            "step": true
         }
     ],
     "recoilDist": 0.016

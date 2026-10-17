@@ -27,14 +27,14 @@
     "laserOnBarrel": true,
     "recoilDist": 0.05,
     "eject": {
-        "x": 0.0,
-        "y": 0.425,
-        "z": -0.553
+        "x": 0.2659,
+        "y": 0.2974,
+        "z": -0.4599
     },
     "ejectDir": {
-        "x": 0.0,
-        "y": 0.0,
-        "z": -1.0
+        "x": 0.6148,
+        "y": 0.7874,
+        "z": -0.045
     },
     "casing": 0.13,
     "glow": [
@@ -43,12 +43,12 @@
         0.25
     ],
     "ejectFly": {
-        "x": 0.5,
-        "y": 0.6,
-        "z": -0.6
+        "x": 0.6148,
+        "y": 1.1374,
+        "z": -0.295
     },
     "ejectOnTurret": true,
-    "ejectPush": 0.23,
+    "ejectPush": 0.067,
     "mechanism": [
         {
             "mesh": "eject_drum",

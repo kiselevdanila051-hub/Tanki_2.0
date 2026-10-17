@@ -432,7 +432,8 @@ public static class ShellFx
                 hull = new[] { new P(-t, 0f, 0), new P(-t, 0.44f, 0), new P(-t + 0.04f, 0.50f, 0), new P(t - 0.04f, 0.50f, 0),
                                new P(t, 0.44f, 0), new P(t, 0f, 0) };
                 seg = mk <= 0 ? 16 : 24; hullSeg = 10; loop = true; center = 0f;
-                d.density = 120f; d.speed = 2.8f; d.spin = 8f; d.axisSpin = 25f; d.delay = 0.12f;
+                // летит плашмя, как диск: слабый кувырок, быстрое вращение вокруг своей оси
+                d.density = 120f; d.speed = 2.8f; d.spin = 2f; d.axisSpin = 25f; d.delay = 0.12f;
                 d.phys = Phys("Casing ring", 0.3f, 0.35f); d.sounds = CellSounds; d.volume = 0.5f;
                 break;
             }

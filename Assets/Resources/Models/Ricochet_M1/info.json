@@ -26,7 +26,7 @@
     },
     "laserOnBarrel": true,
     "eject": {
-        "x": 0.303,
+        "x": 0.26,
         "y": 0.11,
         "z": -0.265
     },
@@ -37,11 +37,11 @@
     },
     "casing": 0.11,
     "ejectOnTurret": true,
-    "ejectPush": 0.067,
+    "ejectPush": 0.146,
     "ejectFly": {
         "x": 1.0,
-        "y": 0.35,
-        "z": -0.25
+        "y": 0.12,
+        "z": -0.12
     },
     "mechanism": [
         {
@@ -70,5 +70,10 @@
             "step": true
         }
     ],
-    "recoilDist": 0.03
+    "recoilDist": 0.03,
+    "ejectAxis": {
+        "x": 0.0,
+        "y": -1.0,
+        "z": 0.0
+    }
 }

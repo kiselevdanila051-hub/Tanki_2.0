@@ -28,22 +28,22 @@
     "destructible": true,
     "recoilDist": 0.05,
     "eject": {
-        "x": 0.195,
-        "y": 0.44,
-        "z": -0.3
+        "x": 0.1,
+        "y": 0.42,
+        "z": -0.486
     },
     "ejectDir": {
-        "x": 0.6,
-        "y": 0.8,
-        "z": 0.0
+        "x": 0.0,
+        "y": 0.0,
+        "z": -1.0
     },
     "casing": 0.12,
     "ejectOnTurret": true,
-    "ejectPush": 0.05,
+    "ejectPush": 0.18,
     "ejectFly": {
-        "x": 0.8,
+        "x": 0.5,
         "y": 0.6,
-        "z": -0.2
+        "z": -0.6
     },
     "mechanism": [
         {
@@ -65,8 +65,8 @@
                 "y": 0.0,
                 "z": 0.0
             },
-            "lead": -0.06,
-            "open": 0.18,
+            "lead": -0.12,
+            "open": 0.11,
             "hold": 0.0,
             "close": 0.01,
             "step": true
@@ -90,8 +90,8 @@
                 "y": 0.0,
                 "z": 0.0
             },
-            "lead": -0.06,
-            "open": 0.18,
+            "lead": -0.12,
+            "open": 0.11,
             "hold": 0.0,
             "close": 0.01,
             "step": true

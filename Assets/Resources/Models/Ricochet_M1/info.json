@@ -26,22 +26,22 @@
     },
     "laserOnBarrel": true,
     "eject": {
-        "x": 0.105,
-        "y": 0.38,
-        "z": -0.135
+        "x": 0.1,
+        "y": 0.33,
+        "z": -0.293
     },
     "ejectDir": {
-        "x": 0.75,
-        "y": 0.66,
-        "z": 0.0
+        "x": 0.0,
+        "y": 0.0,
+        "z": -1.0
     },
     "casing": 0.11,
     "ejectOnTurret": true,
-    "ejectPush": 0.05,
+    "ejectPush": 0.13,
     "ejectFly": {
-        "x": 0.85,
-        "y": 0.55,
-        "z": -0.15
+        "x": 0.5,
+        "y": 0.6,
+        "z": -0.6
     },
     "mechanism": [
         {
@@ -63,8 +63,8 @@
                 "y": 0.0,
                 "z": 0.0
             },
-            "lead": -0.06,
-            "open": 0.18,
+            "lead": -0.12,
+            "open": 0.11,
             "hold": 0.0,
             "close": 0.01,
             "step": true

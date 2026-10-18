@@ -16,6 +16,8 @@ public class TankShooter : MonoBehaviour
     public Transform muzzle;
     public Transform gunPivot;                    // шарнир наклона ствола
     public float muzzleSide;                      // два ствола: дуло перескакивает на ±muzzleSide по x (0 — один ствол)
+    public bool ejectAlternate;                   // гильзы по очереди из окна и его зеркала по x (Шафт — боковые элементы башни)
+    float ejectAltSign = 1f;
     bool rightBarrel;
     public GunStats gun;
     public int team = 1;                          // 1 — игрок, 2 — враги
@@ -296,6 +298,7 @@ public class TankShooter : MonoBehaviour
             ejectPending = true;
             ejectTime = Time.time + ShellFx.EjectDelay(casingKind);
             ejectSign = side;
+            if (side == 0f && ejectAlternate) { ejectAltSign = -ejectAltSign; ejectSign = ejectAltSign; }
             // механизм выброса у выстрелившего ствола: каждая деталь — в своё время относительно выброса
             if (mechParts != null)
             {
@@ -376,7 +379,7 @@ public class TankShooter : MonoBehaviour
     void EjectCasing()
     {
         Vector3 lp = ejectLocal, ld = ejectDirLocal, lf = ejectFlyLocal, la = ejectAxisLocal;
-        if (ejectSign != 0f)                                  // два ствола: окно у того, что выстрелил (зеркально по x)
+        if (ejectSign != 0f)                                  // два ствола (или два окна по очереди): окно этой стороны (зеркально по x)
         {
             lp.x = Mathf.Abs(lp.x) * ejectSign;
             ld.x = Mathf.Abs(ld.x) * ejectSign;

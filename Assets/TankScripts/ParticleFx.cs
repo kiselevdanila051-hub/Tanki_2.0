@@ -784,7 +784,8 @@ public static partial class ParticleFx
             One(g, p, Vector3.zero, 0.6f * size, 0.05f, Color.Lerp(color, Color.white, 0.6f));
             One(g, p, Vector3.zero, 1.1f * size, 0.08f, A(color, 0.6f));
         }
-        if (light) FxLight.Flash(p + n * 0.25f, color, (fire ? 3f : 2.2f) * size, 3f + 2f * size, (fire ? 0.1f : 0.06f) + 0.02f * size);
+        // отсвет — в метре от брони: точечный свет в 30 см от поверхности (яркость ~1/d²) пересвечивал броню и клубы добела
+        if (light) FxLight.Flash(p + n * (0.8f + 0.25f * size), color, (fire ? 2.6f : 1.9f) * size, 4f + 2.5f * size, (fire ? 0.1f : 0.06f) + 0.02f * size);
         FxPulse.Push(p, 2f * size, 1.5f * size);                               // удар разгоняет висящий вокруг дым
         if (fire) AddHaze(p + n * 0.6f * size, 0.8f * size, 0.8f, 2.5f);
     }

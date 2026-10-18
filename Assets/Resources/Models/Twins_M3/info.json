@@ -137,9 +137,9 @@
         }
     ],
     "glow": [
-        0.45,
         3.0,
-        0.8
+        1.1,
+        0.25
     ],
     "ejectOnTurret": true,
     "ejectPush": 0.182,

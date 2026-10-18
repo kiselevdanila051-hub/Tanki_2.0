@@ -70,5 +70,10 @@
     "hullBottomY": -0.2029,
     "hullTopY": 0.3448,
     "hullHalfLength": 1.2687,
-    "hullHalfWidth": 0.6979
+    "hullHalfWidth": 0.7001,
+    "glow": [
+        3.0,
+        1.1,
+        0.25
+    ]
 }

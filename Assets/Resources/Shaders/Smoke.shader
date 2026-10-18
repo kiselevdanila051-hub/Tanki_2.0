@@ -217,7 +217,11 @@ Shader "Tanks/Smoke"
                 LIGHT_LOOP_BEGIN(lightCount)
                     Light l = GetAdditionalLight(lightIndex, input.positionWS, half4(1, 1, 1, 1));
                     half3 lc = lerp(dot(l.color, half3(0.3, 0.55, 0.15)).xxx, l.color, 0.6);   // цветные лампы красят дым мягче
-                    light += lc * (l.distanceAttenuation * (Wrap(dot(N, l.direction)) + pow(saturate(dot(-V, l.direction)), 4.0) * thin * _Translucency));
+                    // свет внутри клуба (вспышка попадания, взрыв): 1/d² у источника давал белый шар. Клуб — объём, а не точка:
+                    // вблизи источника ослабление не сильнее, чем на ~1,6 м (плавный предел 0,4); дальние лампы — как раньше
+                    float ar = min((float)l.distanceAttenuation, 1e4) * 2.5;
+                    half att = (half)(ar * rsqrt(1.0 + ar * ar) * 0.4);
+                    light += lc * (att * (Wrap(dot(N, l.direction)) + pow(saturate(dot(-V, l.direction)), 4.0) * thin * _Translucency));
                 LIGHT_LOOP_END
             #endif
 

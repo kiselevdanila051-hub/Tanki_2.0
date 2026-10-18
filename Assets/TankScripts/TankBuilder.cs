@@ -203,6 +203,7 @@ public class TankBuilder : MonoBehaviour
         shooter.SetRecoil(recoilParts.ToArray(), gm != null ? gm.info.recoilDist : 0f, ejectAt, ejectDir,
                           gm != null && gm.info.eject != null ? gm.info.casing : 0f, CasingOf(gunType), gunModification, glow,
                           gm != null && gm.info.ejectOnTurret ? turret.transform : null, gm != null ? gm.info.ejectPush : 0f, ejectFly, ejectAxis);
+        shooter.ejectAlternate = gm != null && gm.info.ejectAlternate;
         // Механизм выброса: ось поворота при отражении x — (−x, y, z) с обратным углом, сдвиг — (−x, y, z)
         if (mechParts.Count > 0) shooter.SetMechanism(mechParts.ToArray(), mechInfo.ToArray());
         if (spinner != null) spinner.shooter = shooter;

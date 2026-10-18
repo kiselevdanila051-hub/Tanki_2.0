@@ -3,10 +3,10 @@
     "gunScale": 1.15,
     "scale": 0.0019700048801227664,
     "stockWheels": true,
-    "beltX": 0.64,
-    "beltWidth": 0.52,
+    "beltX": 0.6843,
+    "beltWidth": 0.6054,
     "beltThickness": 0.052,
-    "wheelX": 0.64,
+    "wheelX": 0.6843,
     "road": [
         {
             "z": -1.17,
@@ -47,17 +47,17 @@
     "topSag": 0.02,
     "turretMount": {
         "x": 0.0,
-        "y": 0.4641,
+        "y": 0.534,
         "z": 0.55
     },
     "wheelMidX": {
-        "road0": 0.64,
-        "road1": 0.64,
-        "road2": 0.64,
-        "road3": 0.64,
-        "road4": 0.64,
-        "front": 0.64,
-        "rear": 0.64
+        "road0": 0.6843,
+        "road1": 0.6843,
+        "road2": 0.6843,
+        "road3": 0.6843,
+        "road4": 0.6843,
+        "front": 0.6843,
+        "rear": 0.6843
     },
     "color": [
         0.55,
@@ -68,7 +68,7 @@
     "metallic": 0.1,
     "destructible": true,
     "hullBottomY": -0.37,
-    "hullTopY": 0.4599,
+    "hullTopY": 0.53,
     "hullHalfLength": 1.891,
-    "hullHalfWidth": 1.0446
+    "hullHalfWidth": 1.1553
 }

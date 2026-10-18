@@ -1,22 +1,41 @@
 {
-    "modelName":  "Shaft_M1",
-    "scale":  0.0014180058158471498,
-    "height":  0.5043,
-    "gunPivot":  {
-                     "x":  0.0,
-                     "y":  0.2344,
-                     "z":  0.4757
-                 },
-    "muzzle":  {
-                   "x":  0.0,
-                   "y":  0.0,
-                   "z":  1.6731
-               },
-    "color":  [
-                  0.42,
-                  0.47,
-                  0.3
-              ],
-    "smoothness":  0.25,
-    "metallic":  0.15
+    "modelName": "Shaft_M1",
+    "scale": 0.0014180058158471498,
+    "height": 0.5043,
+    "gunPivot": {
+        "x": 0.0,
+        "y": 0.2344,
+        "z": 0.4757
+    },
+    "muzzle": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 1.6731
+    },
+    "color": [
+        0.42,
+        0.47,
+        0.3
+    ],
+    "smoothness": 0.25,
+    "metallic": 0.15,
+    "eject": {
+        "x": 0.42,
+        "y": 0.31,
+        "z": -0.4
+    },
+    "ejectOnTurret": true,
+    "ejectDir": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": -1.0
+    },
+    "ejectFly": {
+        "x": 0.6,
+        "y": 0.8,
+        "z": -0.5
+    },
+    "ejectPush": 0.23,
+    "ejectAlternate": true,
+    "casing": 0.2
 }

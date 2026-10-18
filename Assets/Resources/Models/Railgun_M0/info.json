@@ -1,28 +1,45 @@
 {
-    "modelName":  "Railgun_M0",
-    "scale":  0.0012648369029907962,
-    "height":  0.501,
-    "gunPivot":  {
-                     "x":  0.0,
-                     "y":  0.2299,
-                     "z":  0.7899
-                 },
-    "muzzle":  {
-                   "x":  0.0,
-                   "y":  0.0,
-                   "z":  1.1513
-               },
-    "color":  [
-                  0.42,
-                  0.47,
-                  0.3
-              ],
-    "smoothness":  0.25,
-    "metallic":  0.15,
-    "laser":  {
-                  "x":  0.125,
-                  "y":  0.002,
-                  "z":  0.2646
-              },
-    "laserOnBarrel":  true
+    "modelName": "Railgun_M0",
+    "scale": 0.0012648369029907962,
+    "height": 0.501,
+    "gunPivot": {
+        "x": 0.0,
+        "y": 0.2299,
+        "z": 0.7899
+    },
+    "muzzle": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 1.1513
+    },
+    "color": [
+        0.42,
+        0.47,
+        0.3
+    ],
+    "smoothness": 0.25,
+    "metallic": 0.15,
+    "laser": {
+        "x": 0.125,
+        "y": 0.002,
+        "z": 0.2646
+    },
+    "laserOnBarrel": true,
+    "eject": {
+        "x": 0.0,
+        "y": 0.335,
+        "z": 0.62
+    },
+    "ejectOnTurret": true,
+    "ejectDir": {
+        "x": 0.0,
+        "y": 1.0,
+        "z": 0.0
+    },
+    "ejectFly": {
+        "x": 0.0,
+        "y": 0.9,
+        "z": -0.75
+    },
+    "casing": 0.12
 }

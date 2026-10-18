@@ -18,7 +18,7 @@ public class StreamFx : MonoBehaviour
     ParticleSystem[] systems;
     float[] rates;
     Light lt;
-    float lightBase;
+    float lightBase, lightZ;
     LineRenderer[] strands;
     GameObject orb, ball;
     MeshRenderer orbRend, ballRend;
@@ -55,7 +55,8 @@ public class StreamFx : MonoBehaviour
                 systems[i].Play();
             }
             lt = MakeLight(frost ? new Color(0.55f, 0.8f, 1f) : new Color(1f, 0.55f, 0.2f), frost ? 6f : 8f);
-            lt.transform.localPosition = new Vector3(0f, 0f, frost ? 2f : 2.5f);
+            lightZ = frost ? 2f : 2.5f;
+            lt.transform.localPosition = new Vector3(0f, 0f, lightZ);
             lightBase = frost ? 1.6f : 4f;
         }
         else
@@ -136,6 +137,15 @@ public class StreamFx : MonoBehaviour
         float t = Time.time;
         if (lt != null)
             lt.intensity = lightBase * (0.75f + 0.25f * Mathf.PerlinNoise(t * 9f, seed));
+        if (systems != null && lt != null)
+        {
+            // свет струи — не ближе метра к броне и стенам впереди (в упор он пересвечивал их добела)
+            RaycastHit h;
+            float z = lightZ;
+            if (Physics.Raycast(transform.position, transform.forward, out h, lightZ + 1f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                z = Mathf.Clamp(h.distance - 1f, 0.2f, lightZ);
+            lt.transform.localPosition = new Vector3(0f, 0f, z);
+        }
         if (strands != null) UpdateArc(t);
     }
 
@@ -197,7 +207,7 @@ public class StreamFx : MonoBehaviour
         if (lt != null)
         {
             lt.color = c;
-            lt.transform.position = touching ? end - f * 0.4f : a + f * Mathf.Min(len, 3f);
+            lt.transform.position = touching ? end - f * 1f : a + f * Mathf.Min(len, 3f);   // в метре от брони — без засвета
         }
         if (!touching) return;
 

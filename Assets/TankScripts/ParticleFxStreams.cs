@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 // Частицы выстрелов и струй (часть ParticleFx):
@@ -69,6 +69,14 @@ public static partial class ParticleFx
         em.rateOverTime = rate;
     }
 
+    // Выпуск чуть впереди дула: частица рисуется вокруг своей точки (вытянутая — на полдлины назад по скорости), и у
+    // выпущенной в самом срезе половина уходила в ствол — при повороте камеры поток начинался внутри дула
+    static void Ahead(ParticleSystem ps, float d)
+    {
+        ParticleSystem.ShapeModule sh = ps.shape;
+        sh.position = new Vector3(0f, 0f, d);
+    }
+
     static ParticleSystem Jet(string name, Transform muzzle, Material m, AnimationCurve frames = null, float startFrames = 0f)
     {
         ParticleSystem ps = Make(name, muzzle.position, muzzle, false, m, frames, startFrames);
@@ -102,6 +110,7 @@ public static partial class ParticleFx
                      new[] { 0f, 0.3f, 0.55f, 0.85f }, new[] { 1f, 1f, 0.45f, 0f }, new[] { 0f, 0.35f, 0.6f, 0.82f }), 5f);
         Drag(f, 1.3f);
         Cone(f, 4f, 0.06f);
+        Ahead(f, 0.12f);
         Turbulence(f, 1.4f, 0.7f);
         Splash(f, 0.35f);
         ParticleSystem.RotationOverLifetimeModule rot = f.rotationOverLifetime;
@@ -117,6 +126,7 @@ public static partial class ParticleFx
             Setup(c, true, 0.1f, 0.16f, 12f, 15f, 0.2f, 0.28f, Color.white, new Color(1f, 0.9f, 0.7f), 0f, 60);
             Fade(c, Grad(Color.white, new Color(1f, 0.7f, 0.35f), 0f), 2.6f);
             Cone(c, 2f, 0.03f);
+            Ahead(c, 0.06f);                                                 // ядро — у самого среза
             Splash(c, 0.3f);                                                  // в упор ядро бьёт в стену и отскакивает
             Rate(c, 70f);
             list.Add(c);
@@ -131,6 +141,7 @@ public static partial class ParticleFx
             Fade(s, Keys(new[] { Color.white, Color.white }, new[] { 0f, 1f }, new[] { 0f, 0f, 0.75f, 0.45f, 0f }, new[] { 0f, 0.25f, 0.45f, 0.75f, 1f }), 4.5f);
             Drag(s, 1.3f);
             Cone(s, 5f, 0.06f);
+            Ahead(s, 0.3f);
             Turbulence(s, 0.9f, 0.5f);
             Splash(s, 0.3f, 0.2f, 0.5f);
             Rate(s, 24f);
@@ -146,6 +157,7 @@ public static partial class ParticleFx
             Fade(hz, Keys(new[] { Color.white, Color.white }, new[] { 0f, 1f }, new[] { 0f, 1f, 0f }, new[] { 0f, 0.3f, 1f }), 3f);
             Drag(hz, 1.2f);
             Cone(hz, 6f, 0.1f);
+            Ahead(hz, 0.35f);
             hz.GetComponent<ParticleSystemRenderer>().SetActiveVertexStreams(hazeStreams);
             Rate(hz, 22f);
             list.Add(hz);
@@ -163,6 +175,7 @@ public static partial class ParticleFx
             Fade(e, Grad(Color.white, new Color(1f, 0.3f, 0.05f), 0f), 0.6f);
             Drag(e, 0.8f);
             Cone(e, 10f, 0.05f);
+            Ahead(e, 0.22f);                                                 // вытянутые: длина ≈ 0,44 м
             Rate(e, 18f);
             list.Add(e);
         }
@@ -188,6 +201,7 @@ public static partial class ParticleFx
         Fade(v, Keys(new[] { Color.white, Color.white }, new[] { 0f, 1f }, new[] { 0.3f, 1f, 0.6f, 0f }, new[] { 0f, 0.1f, 0.6f, 1f }), 6.5f);
         Drag(v, 1.4f);
         Cone(v, 4f, 0.06f);
+        Ahead(v, 0.15f);
         Turbulence(v, 1f, 0.6f);
         Splash(v, 0.3f, 0.3f, 0.45f);
         Rate(v, 70f);
@@ -205,6 +219,7 @@ public static partial class ParticleFx
             Fade(c, Grad(Color.white, new Color(0.6f, 0.8f, 1f), 0f), 2f);
             Drag(c, 1.5f);
             Cone(c, 3f, 0.04f);
+            Ahead(c, 0.55f);                                                 // вытянутые струйки: длина ≈ 1,1 м
             Splash(c, 0.3f, 0.45f, 0.3f);                                     // струйки азота разбиваются о стену
             Rate(c, 90f);
             list.Add(c);
@@ -218,6 +233,7 @@ public static partial class ParticleFx
             Fade(x, Grad(Color.white, new Color(0.6f, 0.85f, 1f), 0f), 0.8f);
             Drag(x, 1f);
             Cone(x, 12f, 0.05f);
+            Ahead(x, 0.04f);
             Rate(x, 60f);
             list.Add(x);
         }

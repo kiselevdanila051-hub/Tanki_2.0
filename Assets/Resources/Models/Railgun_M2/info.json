@@ -1,41 +1,47 @@
 {
-    "modelName":  "Railgun_M2",
-    "scale":  0.0013680219349039885,
-    "height":  0.5513,
-    "gunPivot":  {
-                     "x":  0.0,
-                     "y":  0.20026,
-                     "z":  0.7423299999999999
-                 },
-    "muzzle":  {
-                   "x":  0.0,
-                   "y":  0.0,
-                   "z":  1.5254950000000003
-               },
-    "color":  [
-                  0.42,
-                  0.47,
-                  0.3
-              ],
-    "smoothness":  0.25,
-    "metallic":  0.15,
-    "laser":  {
-                  "x":  -0.1101,
-                  "y":  -0.023,
-                  "z":  0.1158
-              },
-    "laserOnBarrel":  true,
-    "destructible":  true,
-    "recoilDist":  0.06,
-    "eject":  {
-                  "x":  0.1828,
-                  "y":  -0.0175,
-                  "z":  0.0656
-              },
-    "ejectDir":  {
-                     "x":  0.75,
-                     "y":  0.55,
-                     "z":  0.55
-                 },
-    "casing":  0.15
+    "modelName": "Railgun_M2",
+    "scale": 0.0013680219349039885,
+    "height": 0.5513,
+    "gunPivot": {
+        "x": 0.0,
+        "y": 0.20026,
+        "z": 0.7423299999999999
+    },
+    "muzzle": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 1.5254950000000003
+    },
+    "color": [
+        0.42,
+        0.47,
+        0.3
+    ],
+    "smoothness": 0.25,
+    "metallic": 0.15,
+    "laser": {
+        "x": -0.1101,
+        "y": -0.023,
+        "z": 0.1158
+    },
+    "laserOnBarrel": true,
+    "destructible": true,
+    "recoilDist": 0.06,
+    "eject": {
+        "x": 0.0,
+        "y": 0.305,
+        "z": 0.72
+    },
+    "ejectOnTurret": true,
+    "ejectDir": {
+        "x": 0.0,
+        "y": 1.0,
+        "z": 0.0
+    },
+    "ejectFly": {
+        "x": 0.0,
+        "y": 0.9,
+        "z": -0.75
+    },
+    "casing": 0.15
 }

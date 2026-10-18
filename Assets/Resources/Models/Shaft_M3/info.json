@@ -1,34 +1,47 @@
 {
-    "modelName":  "Shaft_M3",
-    "scale":  0.0015247375947637976,
-    "height":  0.5429,
-    "gunPivot":  {
-                     "x":  0.0,
-                     "y":  0.2954,
-                     "z":  0.2108
-                 },
-    "muzzle":  {
-                   "x":  0.0,
-                   "y":  0.0,
-                   "z":  1.8372000000000002
-               },
-    "color":  [
-                  0.42,
-                  0.47,
-                  0.3
-              ],
-    "smoothness":  0.25,
-    "metallic":  0.15,
-    "recoilDist":  0.09,
-    "eject":  {
-                  "x":  0.1345,
-                  "y":  0.0046,
-                  "z":  0.1742
-              },
-    "ejectDir":  {
-                     "x":  1.0,
-                     "y":  0.6,
-                     "z":  -0.2
-                 },
-    "casing":  0.24
+    "modelName": "Shaft_M3",
+    "scale": 0.0015247375947637976,
+    "height": 0.5429,
+    "gunPivot": {
+        "x": 0.0,
+        "y": 0.2954,
+        "z": 0.2108
+    },
+    "muzzle": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 1.8372000000000002
+    },
+    "color": [
+        0.42,
+        0.47,
+        0.3
+    ],
+    "smoothness": 0.25,
+    "metallic": 0.15,
+    "recoilDist": 0.09,
+    "eject": {
+        "x": 0.35,
+        "y": 0.405,
+        "z": -0.61
+    },
+    "ejectOnTurret": true,
+    "ejectDir": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": -1.0
+    },
+    "ejectFly": {
+        "x": 0.6,
+        "y": 0.8,
+        "z": -0.5
+    },
+    "ejectPush": 0.27,
+    "ejectAlternate": true,
+    "casing": 0.24,
+    "glow": [
+        3.0,
+        1.1,
+        0.25
+    ]
 }

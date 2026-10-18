@@ -19,6 +19,7 @@ public class StreamFx : MonoBehaviour
     float[] rates;
     Light lt;
     float lightBase;
+    const float LightStandoff = 1.1f;     // свет не ближе к броне и стволу: вплотную точечный источник засвечивает поверхность
     LineRenderer[] strands;
     GameObject orb, ball;
     MeshRenderer orbRend, ballRend;
@@ -155,7 +156,7 @@ public class StreamFx : MonoBehaviour
         float reach = Mathf.Clamp01((age - OrbTime) / ShootTime);       // дуга вылетает из шара
         if (reach <= 0f)
         {
-            if (lt != null) lt.transform.position = a;
+            if (lt != null) lt.transform.position = a + transform.forward * LightStandoff;    // не в самом стволе
             return;
         }
         Vector3 full = end - a;
@@ -197,7 +198,7 @@ public class StreamFx : MonoBehaviour
         if (lt != null)
         {
             lt.color = c;
-            lt.transform.position = touching ? end - f * 0.4f : a + f * Mathf.Min(len, 3f);
+            lt.transform.position = touching ? end - f * LightStandoff : a + f * Mathf.Clamp(len, LightStandoff, 3f);
         }
         if (!touching) return;
 

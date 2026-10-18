@@ -746,7 +746,7 @@ public static partial class ParticleFx
             for (int k = -1; k <= 1; k += 2)
                 One(h, pos + side * k * 0.3f * s, (side * k - d * 0.2f) * 9f * sq, 0.55f * s, 0.05f, new Color(1f, 0.85f, 0.7f));
             One(Glow(), pos + d * 0.15f * s, Vector3.zero, 0.5f * s, 0.035f, Color.white);   // слепящая точка — для bloom
-            FxLight.Flash(pos + d * 0.8f * s, color, 7f * s, 6f + 5f * s, 0.11f + 0.04f * s);
+            FxLight.Flash(pos + d * 1.4f * s, color, 6f * s, 6f + 5f * s, 0.11f + 0.04f * s);
             HeatHaze(pos + d * 0.9f * s, 1.8f * s, 0.45f, 0.8f);                    // горячие газы — воздух дрожит
             CameraShake.Add(pos, 0.035f * s, 10f);
             return;
@@ -760,10 +760,11 @@ public static partial class ParticleFx
             Vector3 v = (d + Random.insideUnitSphere * 0.1f).normalized * Random.Range(14f, 28f) * sq;
             One(t, pos + d * 0.05f, v, Random.Range(0.2f, 0.34f) * s, Random.Range(0.04f, 0.065f), color);
         }
-        FxLight.Flash(pos + d * 0.4f * s, color, 3.5f * s, 5f + 3f * s, 0.07f + 0.03f * s);
+        FxLight.Flash(pos + d * 0.9f * s, color, 2.6f * s, 5f + 3f * s, 0.07f + 0.03f * s);
     }
 
-    // Вспышка попадания у поверхности (чуть выше неё, чтобы не уходила в броню) и отсвет. fire — пороховой снаряд
+    // Вспышка попадания у поверхности (чуть выше неё, чтобы не уходила в броню) и отсвет (источник в метре от брони:
+    // вплотную точечный свет засвечивает броню белым пятном). fire — пороховой снаряд
     // (Смоки, Гром): разрыв — флипбук взрыва (огненный шар → огонь в дыму → тёмный дым); плазма и Рельса — цветное свечение.
     // smoke — непрозрачность клуба разрыва (0 — без клуба: у Грома его рисует Explosion)
     public static void ImpactFlash(Vector3 point, Vector3 normal, Color color, float size, bool light = true, bool fire = false, float smoke = 1f)
@@ -784,7 +785,7 @@ public static partial class ParticleFx
             One(g, p, Vector3.zero, 0.6f * size, 0.05f, Color.Lerp(color, Color.white, 0.6f));
             One(g, p, Vector3.zero, 1.1f * size, 0.08f, A(color, 0.6f));
         }
-        if (light) FxLight.Flash(p + n * 0.25f, color, (fire ? 3f : 2.2f) * size, 3f + 2f * size, (fire ? 0.1f : 0.06f) + 0.02f * size);
+        if (light) FxLight.Flash(p + n * 1.0f, color, (fire ? 2.4f : 1.8f) * size, 4f + 2f * size, (fire ? 0.1f : 0.06f) + 0.02f * size);
         FxPulse.Push(p, 2f * size, 1.5f * size);                               // удар разгоняет висящий вокруг дым
         if (fire) AddHaze(p + n * 0.6f * size, 0.8f * size, 0.8f, 2.5f);
     }
@@ -829,7 +830,7 @@ public static partial class ParticleFx
 
         One(h, pos, Vector3.zero, 2.4f * scale, 0.12f, Color.white);
         One(h, pos + Vector3.up * 0.3f * scale, Vector3.up * 2f, 1.7f * scale, 0.2f, new Color(1f, 0.85f, 0.7f));
-        FxLight.Flash(pos + Vector3.up * 0.8f, new Color(1f, 0.6f, 0.3f), 10f * scale, 10f + 8f * scale, big ? 0.9f : 0.5f);
+        FxLight.Flash(pos + Vector3.up * 1.6f, new Color(1f, 0.6f, 0.3f), 12f * scale, 10f + 8f * scale, big ? 0.9f : 0.5f);
 
         float lifeK = big ? 1f : Mathf.Lerp(0.6f, 1f, opacity);                    // прозрачный разрыв (Гром) и рассеивается быстрее
         One(main, pos + Vector3.up * 0.35f * scale, Vector3.up * 0.8f * scale, (big ? 6.5f : 4.6f) * scale, (big ? 4.2f : 2.8f) * lifeK, new Color(0.85f, 0.85f, 0.85f, opacity));

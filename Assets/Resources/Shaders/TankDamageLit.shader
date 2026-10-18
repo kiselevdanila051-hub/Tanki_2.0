@@ -511,6 +511,9 @@ Shader "Tanks/DamageLit"
                     else
                         glow += half3(2.0, 0.7, 0.15) * (1.0 - smoothstep(0.0, 0.45, r)) * exp(-age * 2.5) * face * saturate(inf.x + inf.y) * 0.5;
                 }
+                // Следы рядом складываются: яркость накала ограничена (оттенок сохраняется), иначе bloom засвечивает деталь
+                half gm = max(glow.r, max(glow.g, glow.b));
+                glow *= gm > 3.5 ? 3.5 / gm : 1.0;
             }
 
             Varyings DamageVert(Attributes input)

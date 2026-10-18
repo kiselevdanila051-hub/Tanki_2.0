@@ -317,7 +317,7 @@ public static partial class ParticleFx
         for (int i = 0; i < 16; i++)
             One(dr, p + nn * 0.1f, (nn + Random.insideUnitSphere * 0.8f).normalized * Random.Range(4f, 11f) * size, Random.Range(0.03f, 0.06f),
                 Random.Range(0.4f, 0.8f), Color.Lerp(c, Color.white, 0.4f));
-        FxLight.Flash(p + nn * 0.5f, c, 6f * size, 6f + 4f * size, 0.25f);
+        FxLight.Flash(p + nn * 1.2f, c, 4.5f * size, 6f + 4f * size, 0.25f);
         HeatHaze(p + nn * 0.4f, 2.2f * size, 0.6f, 0.8f);
         CameraShake.Add(p, 0.12f * size, 18f);
     }

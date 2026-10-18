@@ -29,25 +29,25 @@
     "recoilDist": 0.1,
     "eject": {
         "x": 0.0,
-        "y": 0.271,
-        "z": -0.85
+        "y": 0.273,
+        "z": -0.9541
     },
     "ejectDir": {
         "x": 0.0,
-        "y": 1.0,
-        "z": 0.0
+        "y": 0.0,
+        "z": -1.0
     },
     "casing": 0.2,
     "ejectOnTurret": true,
-    "ejectPush": 0.193,
+    "ejectPush": 0.255,
     "ejectFly": {
         "x": 0.0,
-        "y": 1.0,
-        "z": -0.75
+        "y": 0.45,
+        "z": -1.0
     },
     "mechanism": [
         {
-            "mesh": "eject_door",
+            "mesh": "eject_lid",
             "onTurret": true,
             "hinge": {
                 "x": 0.0,
@@ -56,10 +56,10 @@
             },
             "axis": {
                 "x": 1.0,
-                "y": -0.0,
-                "z": -0.0
+                "y": 0.0,
+                "z": 0.0
             },
-            "angle": 105.0,
+            "angle": 35.0,
             "slide": {
                 "x": 0.0,
                 "y": 0.0,
@@ -71,28 +71,28 @@
             "close": 0.2
         },
         {
-            "mesh": "eject_kicker",
+            "mesh": "eject_rammer",
             "onTurret": true,
             "hinge": {
                 "x": 0.0,
-                "y": 0.197,
-                "z": -0.95
-            },
-            "axis": {
-                "x": -1.0,
                 "y": 0.0,
                 "z": 0.0
             },
-            "angle": 19.8,
+            "axis": {
+                "x": 1.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "angle": 0.0,
             "slide": {
                 "x": 0.0,
                 "y": 0.0,
-                "z": 0.0
+                "z": -0.19
             },
             "lead": 0.0,
-            "open": 0.06,
-            "hold": 0.06,
-            "close": 0.14
+            "open": 0.07,
+            "hold": 0.05,
+            "close": 0.15
         }
     ]
 }

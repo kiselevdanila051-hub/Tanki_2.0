@@ -27,14 +27,14 @@
     "laserOnBarrel": true,
     "recoilDist": 0.05,
     "eject": {
-        "x": 0.0,
-        "y": 0.21,
-        "z": -0.775
+        "x": 0.2789,
+        "y": 0.1745,
+        "z": -0.483
     },
     "ejectDir": {
-        "x": 0.0,
-        "y": 0.0,
-        "z": -1.0
+        "x": 0.9498,
+        "y": 0.0087,
+        "z": -0.3127
     },
     "casing": 0.13,
     "glow": [
@@ -43,60 +43,42 @@
         0.25
     ],
     "ejectFly": {
-        "x": 0.0,
-        "y": 0.45,
-        "z": -1.0
+        "x": 0.9498,
+        "y": 0.12,
+        "z": -0.12
     },
     "ejectOnTurret": true,
-    "ejectPush": 0.3,
+    "ejectPush": 0.166,
     "mechanism": [
         {
-            "mesh": "eject_lid",
+            "mesh": "eject_drum",
             "onTurret": true,
             "hinge": {
                 "x": 0.0,
-                "y": 0.278,
-                "z": -0.85
+                "y": 0.425,
+                "z": -0.6622
             },
             "axis": {
-                "x": 1.0,
+                "x": 0.0,
                 "y": 0.0,
-                "z": 0.0
+                "z": 1.0
             },
-            "angle": 75.0,
+            "angle": 45.0,
             "slide": {
                 "x": 0.0,
                 "y": 0.0,
                 "z": 0.0
             },
-            "lead": -0.08,
-            "open": 0.08,
-            "hold": 0.3,
-            "close": 0.2
-        },
-        {
-            "mesh": "eject_rammer",
-            "onTurret": true,
-            "hinge": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
-            },
-            "axis": {
-                "x": 1.0,
-                "y": 0.0,
-                "z": 0.0
-            },
-            "angle": 0.0,
-            "slide": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": -0.1
-            },
-            "lead": 0.0,
-            "open": 0.07,
-            "hold": 0.05,
-            "close": 0.15
+            "lead": -0.12,
+            "open": 0.11,
+            "hold": 0.0,
+            "close": 0.01,
+            "step": true
         }
-    ]
+    ],
+    "ejectAxis": {
+        "x": 0.0092,
+        "y": -1.0,
+        "z": -0.0
+    }
 }

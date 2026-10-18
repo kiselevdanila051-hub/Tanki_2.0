@@ -44,7 +44,8 @@ public class TankShooter : MonoBehaviour
     // каждая со своим временем от момента выброса гильзы (шторки открываются раньше, толкатель — вместе с гильзой)
     Transform[] mechParts;
     Vector3[] mechRest, mechAxis, mechSlide;
-    float[] mechAngle, mechSide, mechStart, mechLead, mechOpen, mechHold, mechClose;
+    float[] mechAngle, mechSide, mechStart, mechLead, mechOpen, mechHold, mechClose, mechBase;
+    bool[] mechStep;
     bool mechActive;
 
     public bool IsScoping { get; private set; }
@@ -234,6 +235,7 @@ public class TankShooter : MonoBehaviour
         mechRest = new Vector3[n]; mechAxis = new Vector3[n]; mechSlide = new Vector3[n];
         mechAngle = new float[n]; mechSide = new float[n]; mechStart = new float[n];
         mechLead = new float[n]; mechOpen = new float[n]; mechHold = new float[n]; mechClose = new float[n];
+        mechBase = new float[n]; mechStep = new bool[n];
         for (int i = 0; i < n; i++)
         {
             MechPart p = info[i];
@@ -246,6 +248,7 @@ public class TankShooter : MonoBehaviour
             mechOpen[i] = Mathf.Max(0.01f, p.open);
             mechHold[i] = Mathf.Max(0f, p.hold);
             mechClose[i] = Mathf.Max(0.01f, p.close);
+            mechStep[i] = p.step;
             MeshFilter mf = mechParts[i].GetComponentInChildren<MeshFilter>();
             mechSide[i] = mf != null && mf.sharedMesh != null
                 ? Mathf.Sign(mf.transform.localPosition.x + mf.sharedMesh.bounds.center.x + mechParts[i].localPosition.x) : 0f;
@@ -299,6 +302,8 @@ public class TankShooter : MonoBehaviour
                 for (int i = 0; i < mechParts.Length; i++)
                 {
                     if (mechParts[i] == null || (side != 0f && mechSide[i] != 0f && mechSide[i] != side && HasOtherSide(i))) continue;
+                    // барабан: недовёрнутый шаг прошлого выстрела засчитывается сразу, новый начинается с ячейки
+                    if (mechStep[i] && mechStart[i] > -5f) { mechBase[i] = Mathf.Repeat(mechBase[i] + mechAngle[i], 360f); }
                     mechStart[i] = ejectTime + mechLead[i];
                 }
                 mechActive = true;
@@ -340,6 +345,20 @@ public class TankShooter : MonoBehaviour
             {
                 if (mechParts[i] == null) continue;
                 float t = Time.time - mechStart[i];
+                if (mechStep[i])
+                {
+                    // пошаговый поворот: доворот на angle за open, сдвиг (если есть) — туда и обратно, как обычно
+                    if (mechStart[i] < -5f) continue;
+                    float ks = t <= 0f ? 0f : t >= mechOpen[i] ? 1f : (t / mechOpen[i]) * (t / mechOpen[i]) * (3f - 2f * t / mechOpen[i]);
+                    float kd = MechCurve(t, mechOpen[i], mechHold[i], mechClose[i]);
+                    mechParts[i].localRotation = Quaternion.AngleAxis(mechBase[i] + mechAngle[i] * ks, mechAxis[i]);
+                    mechParts[i].localPosition = mechRest[i] + mechSlide[i] * kd;
+                    if (t < mechOpen[i] + mechHold[i] + mechClose[i]) { any = true; continue; }
+                    mechBase[i] = Mathf.Repeat(mechBase[i] + mechAngle[i], 360f);
+                    mechStart[i] = -10f;
+                    mechParts[i].localRotation = Quaternion.AngleAxis(mechBase[i], mechAxis[i]);
+                    continue;
+                }
                 float k = MechCurve(t, mechOpen[i], mechHold[i], mechClose[i]);
                 mechParts[i].localRotation = Quaternion.AngleAxis(mechAngle[i] * k, mechAxis[i]);
                 mechParts[i].localPosition = mechRest[i] + mechSlide[i] * k;

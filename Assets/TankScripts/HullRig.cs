@@ -145,4 +145,5 @@ public class MechPart
     public float open = 0.06f;
     public float hold = 0.15f;
     public float close = 0.16f;
+    public bool step;                 // пошаговый поворот (барабан): за цикл — на angle дальше, без возврата
 }

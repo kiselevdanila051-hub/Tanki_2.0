@@ -41,10 +41,10 @@ sysinfo.txt
 
 .claude/
 .claude*
-tools/
-Tools/
-TOOLS/
-Paints/
+/tools/
+/Tools/
+/TOOLS/
+/Paints/
 
 # Keep Unity project configuration and source
 !Assets/

@@ -110,7 +110,7 @@ public class Health : MonoBehaviour
     void Die()
     {
         Vector3 p = AimCenter;
-        Sfx.PlayAt(isTank ? "tank_destroyed" : "target_destroyed", p, 1f);
+        Sfx.PlayAt(isTank ? "tank_destroyed" : "target_destroyed", p);   // прежние звуки (по просьбе пользователя), уровни — в сведении
         // Взрыв танка рисует TankDamage; у мишеней — просто взрыв
         if (!isTank && !ParticleFx.Explosion(p, 0.7f)) Fx.Explosion(p, 1.6f, new Color(1f, 0.55f, 0.15f));
         if (Died != null) Died();

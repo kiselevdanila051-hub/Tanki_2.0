@@ -139,8 +139,8 @@ public class TankNetworkManager : NetworkManager
     // Место возрождения: из ровных мест арены — свободное и подальше от живых танков (носом к центру); на полигоне — у точки игрока
     static void RespawnPose(out Vector3 pos, out Quaternion rot)
     {
-        List<Vector3> points = ArenaMap.SpawnPoints;
-        if (MapBuilder.Current != MapId.Arena || points.Count == 0)
+        List<Vector3> points = MapBuilder.SpawnPoints;
+        if (!MapBuilder.IsWaves(MapBuilder.Current) || points.Count == 0)
         {
             SpawnPose(Random.Range(0, 6), out pos, out rot);
             return;

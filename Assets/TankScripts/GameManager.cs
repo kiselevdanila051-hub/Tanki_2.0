@@ -67,7 +67,7 @@ public class GameManager : MonoBehaviour
         ambient.clip = SoundLibrary.Get("ambient");
         ambient.loop = true;
         ambient.spatialBlend = 0f;
-        ambient.volume = 0.3f;
+        ambient.volume = SoundLibrary.Level("ambient") * Sfx.Master;   // уровень фона — в таблице сведения
         ambient.playOnAwake = false;
 
         EnterGarage();
@@ -77,6 +77,7 @@ public class GameManager : MonoBehaviour
     void EnterGarage()
     {
         CleanupBattle();
+        MapBuilder.Unload();   // карта боя не остаётся в сцене и в памяти, пока игрок в гараже
         state = State.Garage;
         UiOpen = false;
         tcam.enabled = false;
@@ -102,7 +103,7 @@ public class GameManager : MonoBehaviour
         Random.InitState(System.Environment.TickCount);
         wave = 0;
         gameOver = false;
-        waiting = map == MapId.Arena;
+        waiting = MapBuilder.IsWaves(MapBuilder.Current);   // Арена и карты Tanki X — волны ботов
         nextWaveTime = Time.time + 2f;
 
         if (map == MapId.TestRange)
@@ -270,6 +271,7 @@ public class GameManager : MonoBehaviour
         DebrisSpawner.Clear();
         ShotFx.Clear();
         ShellFx.Clear();
+        TrackMarks.Clear();
         Fx.ClearPool();
         if (hadBattle) StartCoroutine(ReleaseMemory());
     }
@@ -287,6 +289,7 @@ public class GameManager : MonoBehaviour
     // ---------- Бой ----------
     void Update()
     {
+        if (ambient != null) ambient.volume = SoundLibrary.Level("ambient") * Sfx.Master;   // настройки звука меняются на ходу
         if (state != State.Battle) return;
 
         if (Input.GetKeyDown(KeyCode.G) && !UiOpen)
@@ -347,10 +350,11 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    // Место для бота — из ровных мест арены (ArenaMap.SpawnPoints): не ближе 25 м к игроку, если не выходит — самое дальнее
+    // Место для бота — из ровных мест арены или точек появления карты Tanki X (MapBuilder.SpawnPoints): не ближе 25 м к
+    // игроку, если не выходит — самое дальнее
     Vector3 FindSpawnPoint(List<Vector3> used)
     {
-        List<Vector3> points = ArenaMap.SpawnPoints;
+        List<Vector3> points = MapBuilder.SpawnPoints;
         Vector3 best = MapBuilder.PlayerSpawn;
         float bestDist = -1f;
         for (int attempt = 0; attempt < 60 && points.Count > 0; attempt++)

@@ -86,7 +86,7 @@ public class Projectile : MonoBehaviour
                     Combat.Hit(h, dmg, crit, hit.point, direction, imp, gun, false, owner);
                     if (crit) ParticleFx.ImpactFlash(hit.point, hit.normal, Fx.CritColor, 1.2f);
                 }
-                Sfx.PlayAt(gun.hitSound, hit.point, 0.7f, gun.hitPitch);
+                Sfx.PlayAt(gun.hitSound, hit.point, 1f, gun.hitPitch);
                 ParticleFx.ImpactFlash(hit.point, hit.normal, gun.projectileColor, 0.4f + gun.projectileSize * 1.5f);
                 ParticleFx.PlasmaSplash(hit.point, hit.normal, gun.projectileColor, 0.6f + gun.projectileSize * 2f, false);   // брызги плазмы
                 transform.position = hit.point;
@@ -103,7 +103,7 @@ public class Projectile : MonoBehaviour
                 bounced = true;
                 remainingRange -= hit.distance;
                 travelled += hit.distance;
-                Sfx.PlayAt("ricochet_bounce", hit.point, 0.6f);
+                Sfx.PlayAt("ricochet_bounce", hit.point);
                 ParticleFx.ImpactFlash(hit.point, hit.normal, gun.projectileColor, 0.35f, false);   // отскок — искра без отсвета
                 ParticleFx.PlasmaRing(hit.point, hit.normal, gun.projectileColor, 0.6f + gun.projectileSize * 2f);   // плазменное кольцо по стене
                 ParticleFx.PlasmaSplash(hit.point, hit.normal, gun.projectileColor, 0.4f, true);
@@ -112,7 +112,7 @@ public class Projectile : MonoBehaviour
                 return;
             }
 
-            Sfx.PlayAt(gun.hitSound, hit.point, 0.45f, gun.hitPitch);
+            Sfx.PlayAt(gun.hitSound, hit.point, 0.7f, gun.hitPitch);   // по стене и земле — тише, чем по броне
             ParticleFx.ImpactFlash(hit.point, hit.normal, gun.projectileColor, 0.3f + gun.projectileSize * 1.2f);
             ParticleFx.PlasmaSplash(hit.point, hit.normal, gun.projectileColor, 0.6f + gun.projectileSize * 2f, true);   // брызги и светящийся ожог
             ParticleFx.SurfaceHit(hit.point, hit.normal, 0.5f);

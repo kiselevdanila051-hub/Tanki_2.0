@@ -8,9 +8,15 @@
 // концу дальности, точка там бледнее. Луч рассеивается в дыме и пыли — объёмы рассеяния собирает LaserScatter.
 // Индикатор попаданий — без надписей: штрихи «×» в точке попадания: обычное — белые, крит — оранжевые и крупнее, задело
 // взрывом — мельче, уничтожение — красные с расходящимся кольцом (событие Combat.HitDealt; рисует GameManager — DrawHud).
+// Звуковой отклик — как в Tanki X, без пространства (слышит только игрок): попадание по врагу — щелчок (GunStats.feedbackSound,
+// не чаще 0,08 с), уничтожение — Feedback/kill; у струй — петля, пока струя бьёт по цели (у Изиды при лечении — healFeedbackSound).
 [DefaultExecutionOrder(100)]   // после TankShooter.LateUpdate: ствол уже наклонён
 public class AimSight : MonoBehaviour
 {
+    // Множители поверх сведения (SoundLibrary.Level; щелчок — ещё GunStats.feedbackDb)
+    public float feedbackVolume = 1f;          // щелчок попадания
+    public float killVolume = 1f;              // уничтожение врага
+    public float streamFeedbackVolume = 1f;    // петля струи по цели
     public float beamWidth = 0.05f;       // ширина луча у излучателя, м
     public float beamEndWidth = 0.022f;   // у точки — уже: свет собирается
     public float glow = 2.2f;             // яркость (больше 1 — свечение в bloom)
@@ -27,6 +33,12 @@ public class AimSight : MonoBehaviour
     int hitKind;
     float hitAt = -10f, killAt = -10f, lastHit = -10f;
     Vector3 hitPoint;
+
+    // Звуковой отклик: разовые звуки и петля струи (обе — 2D), когда струя последний раз била по цели
+    AudioSource feedback, streamFeedback;
+    string streamKey;
+    float streamHitAt = -10f, lastFeedback = -10f;
+    const float StreamHold = 0.25f;   // столько петля держится после последнего попадания струи, с
 
     static readonly RaycastHit[] hits = new RaycastHit[24];
 
@@ -53,6 +65,7 @@ public class AimSight : MonoBehaviour
     {
         Combat.HitDealt -= OnHit;
         Show(false);
+        if (streamFeedback != null) { streamFeedback.Stop(); streamKey = null; }
     }
 
     void OnDestroy()
@@ -190,9 +203,70 @@ public class AimSight : MonoBehaviour
         lr.startColor = lr.endColor = new Color(1f, 1f, 1f, alpha);
     }
 
+    // ---------- Звуковой отклик ----------
+    AudioSource Make2D(bool loop)
+    {
+        AudioSource s = gameObject.AddComponent<AudioSource>();
+        s.spatialBlend = 0f;
+        s.playOnAwake = false;
+        s.loop = loop;
+        s.volume = 0f;
+        return s;
+    }
+
+    void PlayFeedback(string key, float volume, float extraDb = 0f)
+    {
+        AudioClip c = SoundLibrary.Get(key);
+        if (c == null) return;
+        if (feedback == null) feedback = Make2D(false);
+        feedback.PlayOneShot(c, volume * SoundLibrary.Level(key, extraDb) * Sfx.Master);
+        lastFeedback = Time.time;
+    }
+
+    void Feedback(bool killed)
+    {
+        GunStats g = shooter != null ? shooter.gun : null;
+        if (g == null) return;
+        if (killed) { PlayFeedback("Feedback/kill", killVolume); return; }
+        if (g.kind == GunKind.Cone || g.kind == GunKind.Beam) { streamHitAt = Time.time; return; }
+        // Рельса насквозь и взрыв Грома задевают нескольких за выстрел — щелчок один
+        if (!string.IsNullOrEmpty(g.feedbackSound) && Time.time - lastFeedback >= 0.08f) PlayFeedback(g.feedbackSound, feedbackVolume, g.feedbackDb);
+    }
+
+    // Петля струи: пока струя бьёт по врагу (или Изида лечит), с плавным нарастанием и спадом
+    void Update()
+    {
+        GunStats g = shooter != null ? shooter.gun : null;
+        bool alive = health == null || health.Current > 0f;
+        bool healing = shooter != null && shooter.IsHealing;
+        string key = null;
+        if (g != null && alive && shooter.IsStreaming)
+        {
+            if (healing && !string.IsNullOrEmpty(g.healFeedbackSound)) key = g.healFeedbackSound;
+            else if (Time.time - streamHitAt < StreamHold) key = g.feedbackSound;
+        }
+        if (key != null && key != streamKey)
+        {
+            AudioClip c = SoundLibrary.Get(key);
+            if (c != null)
+            {
+                if (streamFeedback == null) streamFeedback = Make2D(true);
+                streamKey = key;
+                streamFeedback.clip = c;
+                streamFeedback.volume = 0f;
+                streamFeedback.Play();
+            }
+        }
+        if (streamFeedback == null) return;
+        float target = key != null && key == streamKey ? streamFeedbackVolume * SoundLibrary.Level(key) * Sfx.Master : 0f;
+        streamFeedback.volume = Mathf.MoveTowards(streamFeedback.volume, target, 3f * Time.deltaTime);
+        if (streamFeedback.volume <= 0.001f && streamFeedback.isPlaying && target <= 0f) { streamFeedback.Stop(); streamKey = null; }
+    }
+
     void OnHit(Health source, Health target, Vector3 point, bool crit, bool killed, bool splash)
     {
         if (source != health || target == health) return;
+        Feedback(killed);
         float now = Time.time;
         int kind = killed ? 3 : crit ? 2 : splash ? 0 : 1;
         if (killed) killAt = now;

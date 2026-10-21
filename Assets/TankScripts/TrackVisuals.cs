@@ -59,6 +59,17 @@ public class TrackVisuals : MonoBehaviour
     const float WrapGap = 0.012f;  // лента над бандажом катка
     const float WrapTrigger = 0.04f;   // режим включается, если каток выше прямой заметно (у прежних корпусов — до 3 см)
 
+    // Окрашенные части ходовой (катки, ленивцы, ведущие и поддерживающие катки — в цвет корпуса и его краску): рендер,
+    // номер материала и перевод единиц сетки в метры по осям (сетки набора нормированы — масштаб краски по радиусу и ширине)
+    struct PaintSlot { public Renderer r; public int slot; public Vector3 axis; }
+    readonly List<PaintSlot> painted = new List<PaintSlot>();
+
+    // Для следов на земле (TrackMarks): набор ходовой (null — заглушка), ширина ленты и шаг трака (координаты модели), модель
+    public TrackSet Set { get { return set; } }
+    public float BeltWidth { get { return beltWidth; } }
+    public float LinkPitch { get { return linkPitch; } }
+    public Transform Model { get { return model; } }
+
     readonly List<Object> owned = new List<Object>();
     static Material baseMaterial;
     static Texture2D beltTexture;
@@ -81,6 +92,7 @@ public class TrackVisuals : MonoBehaviour
     {
         susp = GetComponent<TankSuspension>();
         ReleaseOwned();
+        painted.Clear();
 
         hm = hullModel;
         rig = hullModel != null ? hullModel.rig : null;
@@ -139,6 +151,7 @@ public class TrackVisuals : MonoBehaviour
             if (set.linkB != null) { bufA = new Matrix4x4[1023]; bufB = new Matrix4x4[1023]; }
             phaseLinks[0] = phaseLinks[1] = 0f;
             UpdateVisuals(0f);
+            Repaint();
             return;
         }
 
@@ -171,6 +184,39 @@ public class TrackVisuals : MonoBehaviour
 
         phaseLinks[0] = phaseLinks[1] = 0f;
         UpdateVisuals(0f);
+        Repaint();
+    }
+
+    // Окраска ходовой как у корпуса: заводской цвет (TankDamage.hullColor) или краска танка (TankBuilder.paint) с тем же
+    // числом повторов на метр. Вызывается при сборке и при смене краски (TankDamage.RefreshLook). Материалы берутся с самих
+    // рендеров: StatusEffects мог подменить их своими копиями «(эффекты)» — его кэш окраски сбрасывается
+    public void Repaint()
+    {
+        if (painted.Count == 0) return;
+        StatusEffects fx = GetComponent<StatusEffects>();
+        if (fx != null) fx.InvalidateRenderers();
+        TankBuilder b = GetComponent<TankBuilder>();
+        TankDamage d = GetComponent<TankDamage>();
+        int paint = b != null ? b.paint : 0;
+        Color factory = d != null ? d.hullColor : new Color(0.58f, 0.545f, 0.475f);
+        foreach (PaintSlot p in painted)
+        {
+            if (p.r == null) continue;
+            Material[] mats = p.r.sharedMaterials;
+            if (p.slot >= mats.Length || mats[p.slot] == null) continue;
+            Material m = mats[p.slot];
+            m.SetVector("_PaintAxis", new Vector4(p.axis.x, p.axis.y, p.axis.z, 0f));
+            m.SetFloat("_Metallic", 0.25f);      // крашеная сталь, как корпус (без краски — заводской цвет)
+            m.SetFloat("_Smoothness", 0.3f);
+            if (m.HasProperty("_PaintOn")) Paints.Apply(m, paint, factory);
+            else m.color = factory;
+        }
+    }
+
+    void AddPainted(Transform t, int slot, Vector3 axis)
+    {
+        Renderer r = t != null ? t.GetComponent<Renderer>() : null;
+        if (r != null) painted.Add(new PaintSlot { r = r, slot = slot, axis = new Vector3(Mathf.Abs(axis.x), Mathf.Abs(axis.y), Mathf.Abs(axis.z)) });
     }
 
     // Верхняя ветвь, поддержанная катками: катки по rig.topRollers (спереди назад), ветвь горизонтальна на высоте topRunY
@@ -228,6 +274,7 @@ public class TrackVisuals : MonoBehaviour
                 string name = "road" + (n - 1 - k);                 // road0 — самый передний
                 wheelX[idx] = rig.WheelMid(name);
                 wheels[idx] = MakeMeshObject(model, "Wheel " + idx, stockRoad, mats, side == 0);
+                AddPainted(wheels[idx], 0, Vector3.one);   // сетка колеса — в метрах
                 visExt[idx] = susp.extension[idx];
             }
         }
@@ -237,6 +284,7 @@ public class TrackVisuals : MonoBehaviour
         endWheels[1] = MakeMeshObject(model, "Front wheel R", stockFront, mats, false);
         endWheels[2] = MakeMeshObject(model, "Rear wheel L", stockRear, mats, true);
         endWheels[3] = MakeMeshObject(model, "Rear wheel R", stockRear, mats, false);
+        for (int i = 0; i < 4; i++) AddPainted(endWheels[i], 0, Vector3.one);
         endWheels[0].localPosition = new Vector3(-rig.WheelMid("front"), rig.front.y, rig.front.z);
         endWheels[1].localPosition = new Vector3(rig.WheelMid("front"), rig.front.y, rig.front.z);
         endWheels[2].localPosition = new Vector3(-rig.WheelMid("rear"), rig.rear.y, rig.rear.z);
@@ -244,7 +292,9 @@ public class TrackVisuals : MonoBehaviour
     }
 
     // Катки, ленивец и ведущее колесо из набора модификации: модели нормированы (радиус 1, ширина 1) —
-    // масштаб по радиусу колеса (до внутренней поверхности ленты) и ширине ленты; левая сторона — зеркальная
+    // масштаб по радиусу колеса (до внутренней поверхности ленты) и ширине ленты; левая сторона — зеркальная.
+    // Колёса — в цвет корпуса и его краску (Repaint): у каждого вида свой материал — краска по своему радиусу; резина
+    // бандажей и детали подвески — сталь набора
     void BuildSetWheels(Transform model)
     {
         Material steel = MakeMaterial(set.steel);
@@ -252,9 +302,11 @@ public class TrackVisuals : MonoBehaviour
         steel.SetFloat("_Metallic", 0.5f);
         Material rubber = MakeMaterial(set.rubber);
         rubber.SetFloat("_Smoothness", 0.15f);
-        Material[] steelMats = { steel };
+        Material roadPaint = MakeMaterial(set.steel), idlerPaint = MakeMaterial(set.steel), sprocketPaint = MakeMaterial(set.steel);
+        bool tire = set.road.subMeshCount > 1;
         // цельностальной каток (одна подсетка, М3) — без резины: лишний материал лёг бы вторым проходом поверх стали
-        Material[] roadMats = set.road.subMeshCount > 1 ? new Material[] { steel, rubber } : steelMats;
+        Material[] roadMats = tire ? new Material[] { roadPaint, rubber } : new Material[] { roadPaint };
+        Material[] suspMats = tire ? new Material[] { steel, rubber } : new Material[] { steel };
         float w = rig.beltWidth * 0.9f;
         float rRoad = rig.road[0].r - thickness * 0.5f;
         for (int side = 0; side < 2; side++)
@@ -265,15 +317,16 @@ public class TrackVisuals : MonoBehaviour
                 wheelX[idx] = rig.WheelMid("road" + (n - 1 - k));
                 wheels[idx] = MakeMeshObject(model, "Wheel " + idx, set.road, roadMats, side == 0);
                 wheels[idx].localScale = new Vector3((side == 0 ? -1f : 1f) * set.roadSign * w, rRoad, rRoad);
+                AddPainted(wheels[idx], 0, new Vector3(w, rRoad, rRoad));
                 visExt[idx] = susp.extension[idx];
             }
         }
         float rf = rig.front.r - thickness * 0.5f, rr = rig.rear.r - thickness * 0.5f;
         endWheels = new Transform[4];
-        endWheels[0] = MakeMeshObject(model, "Front wheel L", set.idler, steelMats, true);
-        endWheels[1] = MakeMeshObject(model, "Front wheel R", set.idler, steelMats, false);
-        endWheels[2] = MakeMeshObject(model, "Rear wheel L", set.sprocket, steelMats, true);
-        endWheels[3] = MakeMeshObject(model, "Rear wheel R", set.sprocket, steelMats, false);
+        endWheels[0] = MakeMeshObject(model, "Front wheel L", set.idler, new[] { idlerPaint }, true);
+        endWheels[1] = MakeMeshObject(model, "Front wheel R", set.idler, new[] { idlerPaint }, false);
+        endWheels[2] = MakeMeshObject(model, "Rear wheel L", set.sprocket, new[] { sprocketPaint }, true);
+        endWheels[3] = MakeMeshObject(model, "Rear wheel R", set.sprocket, new[] { sprocketPaint }, false);
         for (int i = 0; i < 4; i++)
         {
             bool front = i < 2, left = i % 2 == 0;
@@ -282,8 +335,9 @@ public class TrackVisuals : MonoBehaviour
             endWheels[i].localScale = new Vector3((left ? -1f : 1f) * outer * w, r, r);
             float mid = rig.WheelMid(front ? "front" : "rear");
             endWheels[i].localPosition = new Vector3((left ? -1f : 1f) * mid, front ? rig.front.y : rig.rear.y, front ? rig.front.z : rig.rear.z);
+            AddPainted(endWheels[i], 0, new Vector3(w, r, r));
         }
-        if (set.arm != null) BuildSuspension(model, w, rRoad, roadMats);
+        if (set.arm != null) BuildSuspension(model, w, rRoad, suspMats);
     }
 
     // Подвеска: на каждый каток — балансир (ось качания впереди и выше катка) и неподвижный фланец на борту
@@ -325,7 +379,11 @@ public class TrackVisuals : MonoBehaviour
         // Поддерживающие катки — в промежутках между катками, касаются ленты снизу (не у дуги вверх, как у Мамонта М0)
         if (set.roller == null) return;
         rollerR = TrackSet.RollerSize * rRoad;
-        Material[] rollerMats = set.roller.subMeshCount > 1 ? mats : new Material[] { mats[0] };   // стальной каток без бандажа (М3)
+        // поддерживающие катки — тоже в цвет корпуса (свой материал: краска по их радиусу); бандаж — резина
+        Material rollerPaint = MakeMaterial(set.steel);
+        Material[] rollerMats = set.roller.subMeshCount > 1 && mats.Length > 1 ? new Material[] { rollerPaint, mats[1] }
+                                                                             : new Material[] { rollerPaint };   // стальной каток без бандажа (М3)
+        Vector3 rollerAxis = new Vector3(w, rollerR, rollerR);
         if (topZ != null)
         {
             // Катки, на которых лежит верхняя ветвь
@@ -339,6 +397,7 @@ public class TrackVisuals : MonoBehaviour
                     rollers[j] = MakeMeshObject(model, "Return roller " + j, set.roller, rollerMats, false, false);
                     rollers[j].localPosition = new Vector3((side == 0 ? -1f : 1f) * rig.beltX, topY - thickness * 0.5f - rollerR, topZ[i]);
                     rollers[j].localScale = new Vector3((side == 0 ? -1f : 1f) * set.roadSign * w, rollerR, rollerR);
+                    AddPainted(rollers[j], 0, rollerAxis);
                 }
             }
             return;
@@ -362,6 +421,7 @@ public class TrackVisuals : MonoBehaviour
                 rollers[j] = MakeMeshObject(model, "Return roller " + j, set.roller, rollerMats, false, false);
                 rollers[j].localPosition = new Vector3((side == 0 ? -1f : 1f) * rig.beltX, y, z);
                 rollers[j].localScale = new Vector3((side == 0 ? -1f : 1f) * set.roadSign * w, rollerR, rollerR);
+                AddPainted(rollers[j], 0, rollerAxis);
             }
         }
     }
@@ -427,6 +487,7 @@ public class TrackVisuals : MonoBehaviour
             w.AddComponent<MeshFilter>().sharedMesh = wheelMesh;
             w.AddComponent<MeshRenderer>().sharedMaterials = new Material[] { wheelMat, lugMat };
             wheels[i] = w.transform;
+            AddPainted(wheels[i], 0, Vector3.one);   // заглушка: сетка в метрах
             wheelX[i] = susp.trackX;
             visExt[i] = susp.extension[i];
         }

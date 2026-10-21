@@ -10,7 +10,8 @@
 // Ещё два класса деталей (метка в той же координате: u = затенение + 4 — хром, + 6 — свечение): полированный хром
 // (_ChromeColor, _ChromeSmooth) и светящиеся щели и полосы (_GlowColor, HDR; цвет задаёт TankDamage из info.json / rig.json).
 // Свечение гаснет вместе с окраской обгоревшего остова (_MetalFx.x) и слабеет с износом.
-// Краска (_PaintOn = 1): текстура _PaintTex трипланарно по координатам модели, _PaintScale — повторов на метр.
+// Краска (_PaintOn = 1): текстура _PaintTex трипланарно по координатам модели, _PaintScale — повторов на метр,
+// _PaintAxis — перевод единиц сетки в метры по осям (у корпуса 1; у катков сетка нормирована — радиус и ширина).
 // Попадания у разрушаемых моделей (_HitCount > 0, массивы задаёт TankDamageM0): вмятины, копоть, ободранная краска, пробоины.
 // На «Арене» освещение умножается на запечённый свет карты под точкой (ArenaBakedShade, глобальные _ArenaBaked*).
 // Тени, глубина и нормали для SSAO берутся из проходов стандартного Lit.
@@ -75,6 +76,7 @@ Shader "Tanks/DamageLit"
         _PaintTex("Paint texture (triplanar)", 2D) = "white" {}
         _PaintOn("Paint on (0/1)", Float) = 0
         _PaintScale("Paint tiles per meter", Float) = 0.3
+        _PaintAxis("Paint: object units to meters per axis", Vector) = (1, 1, 1, 0)
         _PaintBlend("Paint triplanar blend sharpness", Float) = 1.5
         _PaintMetallic("Paint metallic", Range(0.0, 1.0)) = 0.55
         _PaintSmooth("Paint smoothness", Range(0.0, 1.0)) = 0.4
@@ -229,6 +231,7 @@ Shader "Tanks/DamageLit"
             float4 _ChromeColor, _GlowColor;
             float _ChromeSmooth;
             float _PaintOn, _PaintScale, _PaintMetallic, _PaintSmooth, _PaintBlend;
+            float4 _PaintAxis;   // единицы сетки → метры по осям (катки: сетка нормирована, масштаб — трансформом)
             TEXTURE2D(_PaintTex); SAMPLER(sampler_PaintTex);
 
             // Краска: текстура накладывается с трёх сторон по координатам модели (развёрток у моделей нет),
@@ -238,7 +241,7 @@ Shader "Tanks/DamageLit"
             {
                 float3 w = pow(abs(nOS), _PaintBlend);
                 w /= max(1e-4, w.x + w.y + w.z);
-                float3 p = pos * _PaintScale;
+                float3 p = pos * _PaintAxis.xyz * _PaintScale;
                 half3 c = SAMPLE_TEXTURE2D(_PaintTex, sampler_PaintTex, p.zy).rgb * w.x
                         + SAMPLE_TEXTURE2D(_PaintTex, sampler_PaintTex, p.xz).rgb * w.y
                         + SAMPLE_TEXTURE2D(_PaintTex, sampler_PaintTex, p.xy).rgb * w.z;

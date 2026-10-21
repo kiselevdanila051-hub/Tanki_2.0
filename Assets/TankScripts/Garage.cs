@@ -30,7 +30,7 @@ public class Garage : MonoBehaviour
     Camera cam;
     bool visible, uiHidden, settingsOpen, previewDirty, battleRequest;
     int section = 1;                      // 0 профиль, 1 гараж, 2 битвы
-    int settingsTab;                      // настройки: 0 графика, 1 наводка, 2 свечение
+    int settingsTab;                      // настройки: 0 графика, 1 наводка, 2 свечение, 3 звук
     int category;                         // 0 корпуса, 1 пушки, 2 краски, 3 припасы
     Vector2 listScroll, descScroll, settingsScroll;
     string toast;
@@ -51,7 +51,7 @@ public class Garage : MonoBehaviour
     static readonly string[] SectionNames = { "ПРОФИЛЬ", "ГАРАЖ", "БИТВЫ" };
     static readonly string[] SectionIcons = { "profile", "garage", "battles" };
     static readonly string[] CategoryNames = { "КОРПУСА", "ПУШКИ", "КРАСКИ", "ПРИПАСЫ" };
-    static readonly string[] SettingsTabs = { "ГРАФИКА", "НАВОДКА", "СВЕЧЕНИЕ" };
+    static readonly string[] SettingsTabs = { "ГРАФИКА", "НАВОДКА", "СВЕЧЕНИЕ", "ЗВУК" };
     static readonly string[] Supplies = { "Ремкомплект", "Двойная броня", "Двойной урон", "Ускорение", "Мина" };
     const int Balance = 125000;                                                          // заглушка: валюты ещё нет
     const string Cur = " €$";                                                          // евро-доллары
@@ -144,6 +144,7 @@ public class Garage : MonoBehaviour
             preview.GetComponent<StatusEffects>().enabled = false;
             preview.GetComponent<TankSuspension>().enabled = false;   // на подиуме физика подвески не нужна
             preview.GetComponent<TankAudio>().enabled = false;        // и звук двигателя тоже
+            preview.GetComponent<TrackMarks>().enabled = false;       // и следы гусениц
             preview.GetComponent<SelfDestruct>().enabled = false;
             preview.GetComponent<Health>().showBar = false;
             preview.transform.rotation = Quaternion.Euler(0f, -90f, 0f);   // боком к камере, носом влево
@@ -524,8 +525,9 @@ public class Garage : MonoBehaviour
     {
         Frame(r, bgPanel);
         Track(r);
-        string mapLine = BattleSettings.Map == MapId.Arena
-            ? "Арена: волны  ·  " + BattleSettings.DifficultyNames[(int)BattleSettings.Level] + "  ·  до " + BattleSettings.MaxEnemies + " врагов"
+        MapId shown = MapBuilder.Available(BattleSettings.Map) ? BattleSettings.Map : MapId.Arena;
+        string mapLine = MapBuilder.IsWaves(shown)
+            ? MapBuilder.Title(shown) + ": волны  ·  " + BattleSettings.DifficultyNames[(int)BattleSettings.Level] + "  ·  до " + BattleSettings.MaxEnemies + " врагов"
             : "Полигон: манекены и стенд деформации";
         HullStats hs = HullStats.Get(hullType, hullMk);
         GunStats gs = GunStats.Get(gunType, gunMk);
@@ -814,9 +816,20 @@ public class Garage : MonoBehaviour
         float w = (r.width - 8f) / 2f;
         if (MapCard(new Rect(r.x, y, w, 96f), "АРЕНА: ВОЛНЫ", "Волны ботов с ИИ, после волны — ремонт части прочности", map == MapId.Arena)) BattleSettings.Map = MapId.Arena;
         if (MapCard(new Rect(r.x + w + 8f, y, w, 96f), "ПОЛИГОН", "Манекены без ИИ и стенд деформации (клавиши T и Y)", map == MapId.TestRange)) BattleSettings.Map = MapId.TestRange;
+        y += 104f;
+        // Карты Tanki X (TxMap): волны ботов, как на Арене; без данных карточка неактивна
+        float w3 = (r.width - 16f) / 3f;
+        MapId[] tx = { MapId.Silence, MapId.Kungur, MapId.Massacre };
+        for (int i = 0; i < tx.Length; i++)
+        {
+            bool has = MapBuilder.Available(tx[i]);
+            Rect c = new Rect(r.x + i * (w3 + 8f), y, w3, 96f);
+            string desc = has ? "Карта Tanki X, волны ботов" : "Нет данных — перенести из Tanki X (tx_export.py)";
+            if (MapCard(c, MapBuilder.Title(tx[i]).ToUpper(), desc, map == tx[i]) && has) BattleSettings.Map = tx[i];
+        }
         y += 112f;
 
-        if (BattleSettings.Map != MapId.Arena)
+        if (BattleSettings.Map == MapId.TestRange)
         {
             gc.text = "На полигоне враги не нападают: манекены выставляются клавишей T, стенд деформации — клавиша Y.";
             GUI.Label(new Rect(r.x, y, r.width, 80f), gc, sWrap);
@@ -893,6 +906,7 @@ public class Garage : MonoBehaviour
         Rect area = new Rect(r.x, r.y + 90f, r.width, r.height - 90f);
         if (settingsTab == 1) { AimSettings(area); return; }
         if (settingsTab == 2) { GlowSettings(area); return; }
+        if (settingsTab == 3) { SoundSettings(area); return; }
 
         float lw = 220f, viewH = 640f;
         settingsScroll = GUI.BeginScrollView(area, settingsScroll, new Rect(0f, 0f, area.width - 14f, viewH), false, false, GUIStyle.none, GUI.skin.verticalScrollbar);
@@ -1013,6 +1027,36 @@ public class Garage : MonoBehaviour
         gc.text = "Один цвет для всех светящихся деталей танков — огней, швов, камер, каналов дул — и для светящихся гильз. "
                 + "«Как у модели» — у каждой пушки и корпуса свой цвет. Яркость 0 — свечение выключено. Танк на подиуме перекрашивается сразу.";
         GUI.Label(new Rect(area.x, y, w, 80f), gc, hint);
+    }
+
+    // ---------- Звук (SoundPrefs): общая громкость и группы ----------
+    void SoundSettings(Rect area)
+    {
+        SoundPrefs.Load();
+        float w = area.width - 24f, y = area.y, lw = 220f;
+        bool changed = false;
+        GUIStyle hint = Txt(14, DimCol, TextAnchor.UpperLeft, true);
+
+        Text(new Rect(area.x, y, w, 26f), "Громкость", sHead);
+        y += 32f;
+        float m = Mathf.Round(SliderRow(new Rect(area.x, y, w, 34f), lw, "Общая", SoundPrefs.Master, 0f, 1f,
+            Mathf.RoundToInt(SoundPrefs.Master * 100f) + "%") * 20f) / 20f;
+        if (m != SoundPrefs.Master) { SoundPrefs.Master = m; changed = true; }
+        y += 46f;
+        for (int i = 0; i < SoundPrefs.GroupNames.Length; i++)
+        {
+            SoundPrefs.Group g = (SoundPrefs.Group)i;
+            float cur = SoundPrefs.Get(g);
+            float v = Mathf.Round(SliderRow(new Rect(area.x, y, w, 34f), lw, SoundPrefs.GroupNames[i], cur, 0f, 1f,
+                cur <= 0f ? "выкл" : Mathf.RoundToInt(cur * 100f) + "%") * 20f) / 20f;
+            if (v != cur) { SoundPrefs.Set(g, v); changed = true; }
+            y += 40f;
+        }
+        y += 6f;
+        gc.text = "Оружие — выстрелы, попадания, струи и взрывы. Механика — гильзы, механизмы выброса, перезарядка, поворот башни "
+                + "и прицел Шафта. Отклик — щелчок за своё попадание и звук уничтожения врага. Меняется сразу, в том числе в бою.";
+        GUI.Label(new Rect(area.x, y, w, 80f), gc, hint);
+        if (changed) SoundPrefs.Save();
     }
 
     // ---------- Настройки наводки (AimPrefs) ----------

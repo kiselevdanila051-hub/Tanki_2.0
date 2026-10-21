@@ -97,6 +97,7 @@ public static class TankFactory
         builder.isPlayer = isPlayer;
         builder.paint = isPlayer ? Paints.Selected : 0;   // краска игрока — из гаража, у ботов заводская
         root.AddComponent<SmokeWake>();      // танк расталкивает и увлекает дым (ни от кого не зависит — последним из скриптов танка)
+        root.AddComponent<TrackMarks>();     // следы гусениц (только читает подвеску и ходовую — порядок не важен)
         return root;
     }
 

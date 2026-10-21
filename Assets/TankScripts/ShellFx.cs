@@ -19,7 +19,8 @@ using UnityEngine;
 // Выброс анимирован: гильза выдвигается из окна выброса вместе со ствольной группой (PushTime; окно открывает шторка —
 // TankShooter), затем отпускается и дальше живёт по физике: Rigidbody с выпуклым коллайдером по форме (бутылочная катится
 // по дуге, шестигранная — с перекатом, диск встаёт на ребро или ложится), отскакивает от земли, стен и чужих танков,
-// со своим танком не сталкивается (его общая коробка выше башни). Удары озвучены (Resources/Sounds/casing_*).
+// со своим танком не сталкивается (его общая коробка выше башни). Удары озвучены по поверхности (SurfaceOf: металл,
+// асфальт/бетон, грунт/трава; Resources/Sounds/Casings — синтез, scratchpad rt\audio_fix.py), вылет — звуком из Tanki X.
 // Слой Ignore Raycast — выстрелы, автонаводка и подвеска гильз не замечают. Светящиеся части отработанной ячейки остывают.
 // Пул: не больше MaxCasings гильз (самая старая возвращается в пул); выход из боя — Clear.
 // Меши процедурные, в долях длины (масштаб — длина гильзы из info.json × масштаб пушки; у диска длина — диаметр).
@@ -38,9 +39,15 @@ public class CasingDesign
     public float axisSpin;           // вращение вокруг своей оси (диск), рад/с
     public float delay;              // от выстрела до выброса, с (затвор открывается)
     public bool powder;              // пороховая: из дульца выходит дымок
-    public string[] sounds;
+    public string soundSet;          // звуки ударов: Sounds/Casings/<набор>_<поверхность>_<1..4> (brass, rifle, cell)
+    public float pitch = 1f;         // крупная гильза звенит ниже
     public float volume;
 }
+
+// Поверхность, о которую ударилась гильза: металл (танки, обломки, гильзы), твёрдая (асфальт, бетон, стены — по умолчанию),
+// мягкая (грунт, трава, дерево: дно ямы, кочки, брёвна и ящики полигона; объекты с «grass», «dirt», «ground», «sand», «wood»
+// в имени или в имени физического материала)
+public enum CasingSurface { Metal, Hard, Soft }
 
 public static class ShellFx
 {
@@ -85,14 +92,17 @@ public static class ShellFx
     // carrier — ствольная группа (ось качания), localPos / localDir — окно выброса и направление вылета в её осях,
     // length — длина гильзы, м; mk — модификация пушки (у каждого поколения своя гильза); glow — цвет светящихся частей
     // (HDR); owner — свой танк (с ним гильза не сталкивается);
-    // push — ход выталкивания из окна, м (0 — по радиусу гильзы: вбок из окна; вдоль оси — задаётся не меньше длины)
+    // push — ход выталкивания из окна, м (0 — по радиусу гильзы: вбок из окна; вдоль оси — задаётся не меньше длины);
+    // sound — звук вылета у пушки (GunStats.ejectSound: null — по виду гильзы, EjectSoundOf; "" — без звука)
     public static void Eject(Transform carrier, Vector3 localPos, Vector3 localDir, float length, CasingKind kind, int mk,
-                             Color glow, Rigidbody owner, float push = 0f, Vector3 fly = default, Vector3 axis = default)
+                             Color glow, Rigidbody owner, float push = 0f, Vector3 fly = default, Vector3 axis = default,
+                             string sound = null)
     {
         if (RingTest.NoFx || length <= 0f || carrier == null) return;
         CasingDesign d = Design(kind, mk);
         Casing c = Rent();
         active.Add(c);
+        c.ejectSound = sound;
         c.Launch(d, carrier, localPos, localDir.sqrMagnitude > 1e-6f ? localDir.normalized : Vector3.right, length, glow,
                  owner, OwnerColliders(owner), Random.Range(7f, 9f), push, fly, axis);
     }
@@ -263,9 +273,33 @@ public static class ShellFx
         return designs[i];
     }
 
-    static readonly string[] BrassSounds = { "casing_brass_1", "casing_brass_2", "casing_brass_3" };
-    static readonly string[] HeavySounds = { "casing_heavy_1", "casing_heavy_2" };
-    static readonly string[] CellSounds = { "casing_cell_1", "casing_cell_2" };
+    // Звук вылета по набору гильзы (из Tanki X: латунная — гильза Смоки, ячейки — гильза Хаммера)
+    public static string EjectSoundOf(string soundSet)
+    {
+        return soundSet == "cell" ? "Guns/common/cell_eject" : "Guns/common/case_eject";
+    }
+
+    static readonly string[] SurfaceNames = { "metal", "hard", "soft" };
+    static readonly string[] SoftWords = { "grass", "dirt", "ground", "sand", "mud", "wood", "pit bottom", "bump", "log", "crate" };
+
+    public static CasingSurface SurfaceOf(Collider c)
+    {
+        if (c == null) return CasingSurface.Hard;
+        if (c.GetComponentInParent<Health>() != null || c.GetComponentInParent<Casing>() != null) return CasingSurface.Metal;
+        string n = c.name.ToLowerInvariant();
+        string m = c.sharedMaterial != null ? c.sharedMaterial.name.ToLowerInvariant() : "";
+        if (m.Contains("metal") || n.Contains("metal")) return CasingSurface.Metal;
+        for (int i = 0; i < SoftWords.Length; i++)
+            if (n.Contains(SoftWords[i]) || m.Contains(SoftWords[i])) return CasingSurface.Soft;
+        if (c.attachedRigidbody != null && !c.attachedRigidbody.isKinematic) return CasingSurface.Metal;   // обломки, детали танков
+        return CasingSurface.Hard;
+    }
+
+    // Ключ звука удара гильзы набора set о поверхность s (вариант — случайный из четырёх)
+    public static string ImpactSound(string set, CasingSurface s)
+    {
+        return "Casings/" + set + "_" + SurfaceNames[(int)s] + "_" + Random.Range(1, 5);
+    }
 
     static CasingDesign Build(CasingKind kind, int mk)
     {
@@ -316,7 +350,7 @@ public static class ShellFx
                               new P(0.86f, 0.215f, 0), new P(1f, 0.21f, 0), new P(1f, 0f, 0) };
                 seg = mk <= 0 ? 16 : 22; hullSeg = 10;
                 d.density = 260f; d.speed = 2.6f; d.spin = 9f; d.delay = 0.14f; d.powder = true;
-                d.phys = Phys("Casing heavy", 0.22f, 0.4f); d.sounds = HeavySounds; d.volume = 0.8f;
+                d.phys = Phys("Casing heavy", 0.22f, 0.4f); d.soundSet = "brass"; d.pitch = 0.82f; d.volume = 1f;
                 break;
 
             case CasingKind.Rifle:
@@ -351,7 +385,7 @@ public static class ShellFx
                                new P(1f, 0.05f, 0), new P(1f, 0f, 0) };
                 seg = mk <= 0 ? 12 : 14;
                 d.density = 90f; d.speed = 3.2f; d.spin = 13f; d.delay = 0.32f; d.powder = true;
-                d.phys = Phys("Casing rifle", 0.35f, 0.35f); d.sounds = BrassSounds; d.volume = 0.6f;
+                d.phys = Phys("Casing rifle", 0.35f, 0.35f); d.soundSet = "rifle"; d.volume = 0.75f;
                 break;
 
             case CasingKind.Cell:
@@ -385,7 +419,7 @@ public static class ShellFx
                                new P(1f, 0.16f, 0), new P(1f, 0f, 0) };
                 seg = mk == 2 ? 8 : 6; hullSeg = seg; flat = true;
                 d.density = 200f; d.speed = 2.8f; d.spin = 10f; d.delay = 0.16f;
-                d.phys = Phys("Casing cell", 0.2f, 0.45f); d.sounds = CellSounds; d.volume = 0.6f;
+                d.phys = Phys("Casing cell", 0.2f, 0.45f); d.soundSet = "cell"; d.volume = 0.8f;
                 break;
             }
 
@@ -415,7 +449,7 @@ public static class ShellFx
                               new P(0.95f, 0.14f, 0), new P(1f, 0f, 0) };
                 seg = mk <= 0 ? 12 : 16;
                 d.density = 150f; d.speed = 3.0f; d.spin = 12f; d.delay = 0.08f;
-                d.phys = Phys("Casing plasma", 0.28f, 0.4f); d.sounds = CellSounds; d.volume = 0.45f;
+                d.phys = Phys("Casing plasma", 0.28f, 0.4f); d.soundSet = "cell"; d.pitch = 1.12f; d.volume = 0.6f;
                 break;
             }
 
@@ -434,7 +468,7 @@ public static class ShellFx
                 seg = mk <= 0 ? 16 : 24; hullSeg = 10; loop = true; center = 0f;
                 // летит плашмя, как диск: слабый кувырок, быстрое вращение вокруг своей оси
                 d.density = 120f; d.speed = 2.8f; d.spin = 2f; d.axisSpin = 25f; d.delay = 0.12f;
-                d.phys = Phys("Casing ring", 0.3f, 0.35f); d.sounds = CellSounds; d.volume = 0.5f;
+                d.phys = Phys("Casing ring", 0.3f, 0.35f); d.soundSet = "cell"; d.pitch = 1.06f; d.volume = 0.65f;
                 break;
             }
 
@@ -473,7 +507,7 @@ public static class ShellFx
                                new P(1f, 0.105f, 0), new P(1f, 0f, 0) };
                 seg = mk <= 0 ? 14 : 18;
                 d.density = 160f; d.speed = 3.0f; d.spin = 11f; d.delay = 0.11f; d.powder = true;
-                d.phys = Phys("Casing brass", 0.32f, 0.35f); d.sounds = BrassSounds; d.volume = 0.7f;
+                d.phys = Phys("Casing brass", 0.32f, 0.35f); d.soundSet = "brass"; d.volume = 0.85f;
                 break;
         }
 
@@ -579,6 +613,7 @@ public class Casing : MonoBehaviour
     bool flying;
     bool[] ownerOn;          // столкновения со своим танком снова включены (гильза вышла из его коллайдеров)
     float releaseTime;
+    [System.NonSerialized] public string ejectSound;   // звук вылета (null — по виду гильзы, "" — без звука)
 
     void Awake()
     {
@@ -683,7 +718,8 @@ public class Casing : MonoBehaviour
                              axis * (design.axisSpin > 0f ? design.axisSpin * Random.Range(0.8f, 1.2f) : Random.Range(-4f, 4f));
         Vector3 mouth = transform.position + axis * length * 0.5f;
         if (design.powder) ParticleFx.SmokePuff(mouth, 1, Mathf.Clamp(length * 0.45f, 0.05f, 0.14f));
-        if (ShellFx.AllowSound(mouth)) Sfx.PlayAt("casing_eject", mouth, 0.45f, Random.Range(0.92f, 1.08f));
+        string es = ejectSound ?? ShellFx.EjectSoundOf(design.soundSet);
+        if (es.Length > 0 && ShellFx.AllowSound(mouth)) Sfx.PlayAt(es, mouth, 1f, 1f, Sfx.NearRange);
     }
 
     void Update()
@@ -722,15 +758,17 @@ public class Casing : MonoBehaviour
 
     void OnCollisionEnter(Collision c)
     {
-        if (!flying || design == null || design.sounds == null || design.sounds.Length == 0) return;
+        if (!flying || design == null || string.IsNullOrEmpty(design.soundSet)) return;
         float v = c.relativeVelocity.magnitude;
         if (v < 0.9f || sounds >= 6 || Time.time - lastSound < 0.08f) return;
         Vector3 p = c.contactCount > 0 ? c.GetContact(0).point : transform.position;
         if (!ShellFx.AllowSound(p)) return;
         lastSound = Time.time;
         sounds++;
+        // звук — по поверхности (металл, асфальт/бетон, грунт/трава), громкость — по силе удара (первый удар громче отскоков)
+        CasingSurface surf = ShellFx.SurfaceOf(c.collider);
         float vol = Mathf.Clamp01((v - 0.6f) / 4f) * design.volume;
-        Sfx.PlayAt(design.sounds[Random.Range(0, design.sounds.Length)], p, vol, Random.Range(0.92f, 1.08f));
+        Sfx.PlayAt(ShellFx.ImpactSound(design.soundSet, surf), p, vol, design.pitch * Random.Range(0.97f, 1.03f), Sfx.NearRange);
     }
 
     void OnDestroy()

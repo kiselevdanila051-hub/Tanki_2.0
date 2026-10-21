@@ -247,6 +247,8 @@ public partial class TankDamage : MonoBehaviour
     {
         TankBuilder builder = GetComponent<TankBuilder>();
         foreach (Part p in parts) ApplyLook(p, builder);
+        TrackVisuals tracks = GetComponent<TrackVisuals>();
+        if (tracks != null) tracks.Repaint();             // катки — в цвет корпуса и его краску
         ReleaseBitMaterials();                            // краска поменялась — осколки возьмут новую
     }
 

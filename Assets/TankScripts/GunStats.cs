@@ -87,10 +87,20 @@ public class GunStats
         get { return muzzleSmoke > 0f ? new Color(1f, 0.72f, 0.38f) : projectileColor; }
     }
 
-    // Звуки (имена файлов в Resources/Sounds). Звук попадания у каждой пушки свой — <пушка>_hit; чужие не берутся
-    // (файла нет — попадание без звука, SoundLibrary один раз предупредит в консоли)
+    // Звуки (имена файлов в Resources/Sounds; из Tanki X — Guns/<пушка>/…). Звук попадания у каждой пушки свой; чужие
+    // не берутся (файла нет — попадание без звука, SoundLibrary один раз предупредит в консоли).
+    // Громкость каждого звука — в таблице сведения SoundLibrary.Level, здесь только какие звуки
     public string shotSound, hitSound, loopSound;
     public float hitPitch = 1f;
+    public string healLoopSound;                         // Изида: дуга лечит союзника
+    public string scopedShotSound, scopedHitSound;       // Шафт: выстрел из прицела и его попадание
+    public string ejectSound;                            // вылет гильзы (null — по виду гильзы, ShellFx.EjectSoundOf; "" — без звука)
+    public string ejectorOpenSound, ejectorCloseSound;   // механизм выброса гильзы: открытие — с вылетом, закрытие — позже
+    public string reloadStartSound, reloadEndSound;      // перезарядка: сразу после выстрела и к её концу
+    // Отклик стрелку (Tanki X, AimSight): попал по врагу — щелчок; у струй — петля, пока бьют по цели (у Твинса нет, как в TX).
+    // feedbackDb — уровень щелчка у этой пушки (группы User/<Пушка>HitFeedback микшера TX)
+    public string feedbackSound, healFeedbackSound;
+    public float feedbackDb;
 
     // Внешний вид заглушки
     public float barrelLength;
@@ -176,7 +186,7 @@ public class GunStats
                     burnFraction = 0.3f, burnDuration = 3f, turretSpeed = 130f,
                     dentScale = 0f, markSize = 1.6f, sootAmount = 1f, bareAmount = 0f,
                     aimUp = 15f, aimDown = 10f,
-                    loopSound = "firebird_loop",
+                    loopSound = "Guns/firebird/loop", feedbackSound = "Feedback/firebird_loop",
                     barrelLength = 1.0f, barrelThickness = 0.45f, projectileColor = new Color(1f, 0.45f, 0.1f)
                 };
             case GunType.Freeze:
@@ -189,7 +199,7 @@ public class GunStats
                     slowFactor = 0.4f, slowDuration = 1.2f, turretSpeed = 130f,
                     dentScale = 0f, sootAmount = 0f, bareAmount = 0f,
                     aimUp = 15f, aimDown = 10f,
-                    loopSound = "freeze_loop",
+                    loopSound = "Guns/freeze/loop", feedbackSound = "Feedback/freeze_loop",
                     barrelLength = 1.2f, barrelThickness = 0.4f, projectileColor = new Color(0.5f, 0.85f, 1f)
                 };
             case GunType.Isida:
@@ -202,7 +212,8 @@ public class GunStats
                     lifeSteal = 0.5f, turretSpeed = 130f,
                     dentScale = 0f, markSize = 0.8f, sootAmount = 0.45f, bareAmount = 0.25f,
                     aimUp = 15f, aimDown = 10f,
-                    loopSound = "isida_loop",
+                    loopSound = "Guns/isida/damage_loop", healLoopSound = "Guns/isida/heal_loop",
+                    feedbackSound = "Feedback/isida_attack_loop", healFeedbackSound = "Feedback/isida_heal_loop",
                     barrelLength = 1.3f, barrelThickness = 0.3f, projectileColor = new Color(0.7f, 1f, 0.4f)
                 };
             case GunType.Twins:
@@ -217,7 +228,7 @@ public class GunStats
                     critChance = 0.05f, critImpactMultiplier = 2f,
                     recoil = 350f, recoilStagger = 0.04f, impact = 900f,
                     aimCone = 3f, aimUp = 10f, aimDown = 8f,
-                    shotSound = "twins_shot", hitSound = "twins_hit",
+                    shotSound = "Guns/twins/shot", hitSound = "Guns/twins/hit",
                     barrelLength = 1.8f, barrelThickness = 0.3f,
                     projectileSize = 0.22f, projectileColor = new Color(0.4f, 1f, 0.5f)
                 };
@@ -232,7 +243,7 @@ public class GunStats
                     critChance = 0.05f, critImpactMultiplier = 2f,
                     recoil = 1300f, recoilStagger = 0.14f, impact = 1200f,
                     aimCone = 3f, aimUp = 10f, aimDown = 8f,
-                    shotSound = "ricochet_shot", hitSound = "ricochet_hit",
+                    shotSound = "ricochet_shot", hitSound = "ricochet_hit", feedbackSound = "Feedback/hit", feedbackDb = -10.1f,
                     barrelLength = 2.0f, barrelThickness = 0.28f,
                     projectileSize = 0.3f, projectileColor = new Color(1f, 0.5f, 0.12f)   // оранжевая плазма
                 };
@@ -250,7 +261,8 @@ public class GunStats
                     critChance = 0.08f, critDamage = At(new float[] { 43f, 55f, 70f, 92f }, i) * 1.4f, critImpactMultiplier = 1.5f,
                     recoil = 4200f, recoilStagger = 0.24f, impact = 5000f,
                     aimCone = 3f, aimUp = 10f, aimDown = 8f,
-                    shotSound = "thunder_shot", hitSound = "thunder_hit",
+                    shotSound = "Guns/thunder/shot", hitSound = "Guns/thunder/hit", feedbackSound = "Feedback/hit", feedbackDb = -5.1f,
+                    ejectSound = "", ejectorOpenSound = "Guns/thunder/ejector_open", ejectorCloseSound = "Guns/thunder/ejector_close",
                     barrelLength = 2.2f, barrelThickness = 0.45f,
                     projectileColor = new Color(1f, 0.35f, 0.2f)
                 };
@@ -265,7 +277,7 @@ public class GunStats
                     critChance = 0.05f, critDamage = At(new float[] { 85f, 110f, 145f, 190f }, i) * 1.3f, critImpactMultiplier = 1.5f,
                     recoil = 11000f, recoilStagger = 0.5f, impact = 8000f,
                     aimCone = 2.5f, aimUp = 8f, aimDown = 6f,
-                    shotSound = "railgun_shot", hitSound = "railgun_hit",
+                    shotSound = "Guns/railgun/shot_mix", hitSound = "Guns/railgun/hit",   // shot_mix — выстрел TX + прежний гул feedbackSound = "Feedback/hit", feedbackDb = -10.1f,
                     barrelLength = 4.0f, barrelThickness = 0.18f,
                     projectileColor = new Color(0.4f, 0.8f, 1f)
                 };
@@ -281,7 +293,10 @@ public class GunStats
                     recoil = 3400f, recoilStagger = 0.22f, impact = 3000f,
                     scopedRecoil = 10500f, scopedStagger = 0.65f, scopedImpact = 12000f,
                     aimCone = 2f, aimUp = 40f, aimDown = 20f,
-                    shotSound = "shaft_shot", hitSound = "shaft_hit",
+                    shotSound = "shaft_shot", hitSound = "Guns/shaft/quick_hit",   // выстрел — прежний (один на оба режима)
+                    scopedHitSound = "Guns/shaft/aim_hit",
+                    reloadStartSound = "Guns/shaft/cooldown_start", reloadEndSound = "Guns/shaft/cooldown_close",
+                    feedbackSound = "Feedback/hit", feedbackDb = -3.1f,
                     barrelLength = 4.2f, barrelThickness = 0.2f, projectileColor = new Color(0.9f, 0.4f, 1f)
                 };
             default: // Smoky
@@ -296,7 +311,8 @@ public class GunStats
                     critChance = 0.15f, critDamage = At(new float[] { 16f, 23f, 32f, 45f }, i) * 1.6f, critImpactMultiplier = 3f,
                     recoil = 2200f, recoilStagger = 0.12f, impact = 2500f,
                     aimCone = 3f, aimUp = 12f, aimDown = 10f,
-                    shotSound = "smoky_shot", hitSound = "smoky_hit",
+                    shotSound = "Guns/smoky/shot", hitSound = "Guns/smoky/hit", feedbackSound = "Feedback/hit", feedbackDb = -12.1f,
+                    ejectorOpenSound = "Guns/smoky/ejector_open", ejectorCloseSound = "Guns/smoky/ejector_close",
                     barrelLength = 2.4f, barrelThickness = 0.25f,
                     projectileColor = new Color(1f, 0.85f, 0.2f)
                 };

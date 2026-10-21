@@ -352,6 +352,14 @@ public static class ArenaMap
     // ---------- Атмосфера ----------
     static void ApplyAtmosphere(Data d)
     {
+        SaveAtmosphere();
+        ApplyArenaAtmosphere(d);
+    }
+
+    // Запомнить небо, эмбиент, туман и солнце сцены (один раз до первой карты со своей атмосферой — Арены или карты Tanki X,
+    // TxMap); RestoreAtmosphere вернёт их на полигоне и в гараже
+    public static void SaveAtmosphere()
+    {
         if (!atmosphereSaved)
         {
             atmosphereSaved = true;
@@ -378,7 +386,20 @@ public static class ArenaMap
                 sSunShadowLayers = ad.shadowRenderingLayers;
             }
         }
+    }
 
+    // Солнце сцены (главный направленный свет) — его поворачивают и перекрашивают карты
+    public static Light Sun
+    {
+        get
+        {
+            if (sun == null) sun = FindSun();
+            return sun;
+        }
+    }
+
+    static void ApplyArenaAtmosphere(Data d)
+    {
         RenderSettings.skybox = d.sky;
         RenderSettings.ambientMode = AmbientMode.Flat;
         RenderSettings.ambientIntensity = 1f;

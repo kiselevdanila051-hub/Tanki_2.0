@@ -1,0 +1,6 @@
+Kungur.unity
+chunks 933
+materials 91
+textures 90
+spawns 82
+bonuses 143

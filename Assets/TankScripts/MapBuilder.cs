@@ -1,14 +1,38 @@
+using System.Collections.Generic;
 using UnityEngine;
 
-public enum MapId { Arena, TestRange }
+// Номера сохраняются в PlayerPrefs (BattleSettings) — новые карты только в конец
+public enum MapId { Arena, TestRange, Silence, Kungur, Massacre }
 
 // Строит карты:
 //  Арена — карта «Арена» из Tanki Online 2.0 (ArenaMap: модель, физика, свет и небо оригинала; для боя с волнами ботов);
 //  Полигон — из кода: ровная площадка для разгона, пандусы разной крутизны, мост, яма, стены для рикошета,
-//            укрытия, кочки и мусор, а также места для ботов-манекенов.
+//            укрытия, кочки и мусор, а также места для ботов-манекенов;
+//  Тишина, Кунгур, Бойня — карты Tanki X (TxMap; бой с волнами ботов, как на Арене).
 public static class MapBuilder
 {
     public static MapId Current { get; private set; }
+
+    // Карта Tanki X: папка в Resources/Maps (имя сцены оригинала) и название
+    public static bool IsTx(MapId id) { return id == MapId.Silence || id == MapId.Kungur || id == MapId.Massacre; }
+    public static string TxFolder(MapId id) { return id == MapId.Kungur ? "Kungur" : id == MapId.Massacre ? "Massacre" : "Silence"; }
+    public static bool IsWaves(MapId id) { return id == MapId.Arena || IsTx(id); }   // бой с волнами ботов
+    public static bool Available(MapId id) { return !IsTx(id) || TxMap.Available(TxFolder(id)); }
+
+    public static string Title(MapId id)
+    {
+        switch (id)
+        {
+            case MapId.TestRange: return "Полигон";
+            case MapId.Silence: return "Тишина";
+            case MapId.Kungur: return "Кунгур";
+            case MapId.Massacre: return "Бойня";
+            default: return "Арена";
+        }
+    }
+
+    // Места появления ботов и возрождения: ровные места Арены или точки появления карты Tanki X
+    public static List<Vector3> SpawnPoints { get { return IsTx(Current) ? TxMap.SpawnPoints : ArenaMap.SpawnPoints; } }
     static GameObject root;
     static PhysicsMaterial lowFriction;
     static Material baseMat;
@@ -54,11 +78,23 @@ public static class MapBuilder
     {
         if (root != null && Current == id) return;
         if (root != null) Object.DestroyImmediate(root);   // сразу, чтобы старые коллайдеры не мешали расстановке
-        root = new GameObject(id == MapId.Arena ? "Map: Arena" : "Map: Test Range");
+        if (!Available(id)) id = MapId.Arena;              // карты Tanki X ещё нет в проекте — Арена
+        root = new GameObject("Map: " + Title(id));
         Current = id;
         Random.State saved = Random.state;
         Random.InitState(7);
         if (id == MapId.Arena) ArenaMap.Build(root.transform);
+        else if (IsTx(id))
+        {
+            ArenaMap.RestoreAtmosphere();   // без запечённого света и тумана Арены
+            if (!TxMap.Build(root.transform, TxFolder(id)))
+            {
+                Object.DestroyImmediate(root);
+                root = new GameObject("Map: Arena");
+                Current = MapId.Arena;
+                ArenaMap.Build(root.transform);
+            }
+        }
         else
         {
             ArenaMap.RestoreAtmosphere();   // небо, туман и свет сцены вместо ночной арены
@@ -68,10 +104,21 @@ public static class MapBuilder
         Physics.SyncTransforms();
     }
 
+    // Выход в гараж: карта убирается из сцены (карты Tanki X — сотни метров, доставали до гаража в (300, 0, 0)),
+    // атмосфера сцены возвращается, данные карт Tanki X освобождаются (TxMap.Release); следующий бой построит заново
+    public static void Unload()
+    {
+        if (root != null) Object.DestroyImmediate(root);
+        root = null;
+        ArenaMap.RestoreAtmosphere();
+        TxMap.Release();
+    }
+
     public static Vector3 PlayerSpawn
     {
         get
         {
+            if (IsTx(Current)) return TxMap.PlayerSpawn + Vector3.up * 1.2f;   // точка оригинала, уже на земле
             if (Current != MapId.Arena) return new Vector3(0f, 1.2f, -75f);
             Vector3 p = ArenaMap.PlayerSpawn;   // место игрока из cfg.dxt1.xml оригинала
             return new Vector3(p.x, GroundAt(p.x, p.z) + 1.2f, p.z);
@@ -80,13 +127,18 @@ public static class MapBuilder
 
     public static Quaternion PlayerRotation
     {
-        get { return Current == MapId.Arena ? Quaternion.Euler(0f, ArenaMap.PlayerYaw, 0f) : Quaternion.identity; }
+        get
+        {
+            if (IsTx(Current)) return Quaternion.Euler(0f, TxMap.PlayerYaw, 0f);
+            return Current == MapId.Arena ? Quaternion.Euler(0f, ArenaMap.PlayerYaw, 0f) : Quaternion.identity;
+        }
     }
 
     // Высота поверхности в точке (неподвижные объекты, без танков и ящиков)
     public static float GroundAt(float x, float z)
     {
-        int count = Physics.RaycastNonAlloc(new Vector3(x, 60f, z), Vector3.down, hits, 200f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        // сверху: у карт Tanki X рельеф выше 60 м (горы, мосты)
+        int count = Physics.RaycastNonAlloc(new Vector3(x, 400f, z), Vector3.down, hits, 800f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         float best = float.MaxValue, y = 0f;
         for (int i = 0; i < count; i++)
         {
@@ -197,6 +249,20 @@ public static class MapBuilder
         Label("СТЕНД ДЕФОРМАЦИИ  (Y — панель)", new Vector3(-82f, 7f, -8f));
 
         Label("Т — настройка манекенов", new Vector3(0f, 3f, -66f));
+
+        // Площадки для проверки звука гильз (ShellFx.SurfaceOf — по имени): металл, асфальт, трава, земля 10 × 10 м,
+        // тонкие (4 см) — заехать и стрелять, гильзы падают на площадку под танком
+        SurfacePad("Metal Plate", "Металл", new Vector3(-28f, 0f, -58f), new Color(0.46f, 0.48f, 0.52f));
+        SurfacePad("Asphalt Pad", "Асфальт", new Vector3(-16f, 0f, -58f), new Color(0.2f, 0.2f, 0.21f));
+        SurfacePad("Grass Patch", "Трава", new Vector3(-28f, 0f, -70f), new Color(0.27f, 0.42f, 0.17f));
+        SurfacePad("Dirt Patch", "Земля", new Vector3(-16f, 0f, -70f), new Color(0.38f, 0.29f, 0.19f));
+        Label("Звук гильз", new Vector3(-22f, 3.5f, -64f));
+    }
+
+    static void SurfacePad(string name, string label, Vector3 center, Color color)
+    {
+        Box(name, center + new Vector3(0f, 0.02f, 0f), new Vector3(10f, 0.04f, 10f), color);
+        Label(label, center + new Vector3(0f, 1.5f, -5.5f));
     }
 
     // =============================== Детали ===============================

@@ -23,6 +23,7 @@ public class TankSuspension : MonoBehaviour
     public float[] extension { get; private set; }    // текущий вынос подвески каждого катка [сторона * n + номер]
     public Vector3[] contactPoint { get; private set; } // где каток касается земли
     public float[] load { get; private set; }           // сила, с которой каток давит на землю, Н (0 — в воздухе)
+    public Collider[] contactCollider { get; private set; }   // на чём стоит каток (следы гусениц — по поверхности)
 
     // Насколько каток может видимо опуститься ниже положения покоя (задаётся по размеру катка). Пружина
     // работает на весь ход, но на вид каток не «отрывается» от корпуса при разгоне и клевке
@@ -92,6 +93,7 @@ public class TankSuspension : MonoBehaviour
         extension = new float[2 * n];
         contactPoint = new Vector3[2 * n];
         load = new float[2 * n];
+        contactCollider = new Collider[2 * n];
         for (int i = 0; i < extension.Length; i++) extension[i] = RestExtension;
     }
 
@@ -133,12 +135,14 @@ public class TankSuspension : MonoBehaviour
                 float best = float.MaxValue;
                 Vector3 bestNormal = up;
                 Vector3 bestPoint = origin;
+                Collider bestCol = null;
                 for (int h = 0; h < count; h++)
                 {
                     RaycastHit hit = hitBuffer[h];
                     if (hit.rigidbody == rb) continue;
-                    if (hit.distance < best) { best = hit.distance; bestNormal = hit.normal; bestPoint = hit.point; }
+                    if (hit.distance < best) { best = hit.distance; bestNormal = hit.normal; bestPoint = hit.point; bestCol = hit.collider; }
                 }
+                contactCollider[idx] = bestCol;
 
                 if (best < float.MaxValue)
                 {

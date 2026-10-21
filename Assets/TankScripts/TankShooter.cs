@@ -40,7 +40,13 @@ public class TankShooter : MonoBehaviour
     // Чем кончился последний мгновенный выстрел (FireRay) — для отправки остальным игрокам
     Vector3 rayEnd, rayNormal;
     byte rayFlags;
-    const byte RayHitAny = 1, RayHitTank = 2, RayCrit = 4, RayPrimary = 8, RayExplode = 16, RayRight = 32;
+    const byte RayHitAny = 1, RayHitTank = 2, RayCrit = 4, RayPrimary = 8, RayExplode = 16, RayRight = 32, RayScoped = 64;
+    bool scopedShot;                              // идёт выстрел Шафта из прицела: свои звуки выстрела и попадания
+
+    // Звуки с задержкой: закрытие механизма выброса гильзы (в точке окна) и конец перезарядки (GunStats.reload…Sound)
+    float ejectorCloseAt, reloadSoundAt;
+    Transform ejectorCloseCarrier;
+    Vector3 ejectorCloseLocal;
 
     // Откат подвижных частей ствола и выброс гильз (SetRecoil — из TankBuilder): части двигаются назад вдоль оси ствола
     // (быстро назад, плавно на место), гильза вылетает из окна выброса с задержкой, когда открывается затвор
@@ -141,6 +147,14 @@ public class TankShooter : MonoBehaviour
         if (scopeLaser != null) scopeLaser.enabled = false;
         beamLock = null;
         if (input != null) input.Scoping = false;
+        ejectorCloseAt = 0f;
+        reloadSoundAt = 0f;
+    }
+
+    // Изида лечит: дуга держится за союзника
+    public bool IsHealing
+    {
+        get { return IsStreaming && gun != null && gun.kind == GunKind.Beam && beamLock != null && team != 0 && beamLock.team == team; }
     }
 
     void Update()
@@ -203,6 +217,7 @@ public class TankShooter : MonoBehaviour
     // бьющий в землю под острым углом, «прыгал» на метры при каждом покачивании)
     void LateUpdate()
     {
+        UpdateTimedSounds();
         if (gunPivot == null || gun == null) return;
         float target;
         if (remote)
@@ -415,7 +430,43 @@ public class TankShooter : MonoBehaviour
         Camera cam = Camera.main;
         if (cam != null && (pos - cam.transform.position).sqrMagnitude > 80f * 80f) return;   // вдали гильз не видно
         float k = carrier.lossyScale.z;
-        ShellFx.Eject(carrier, lp, ld, casingLength * k, casingKind, casingMk, GlowPrefs.Resolve(casingGlow), rb, ejectPush * k, lf, la);
+        ShellFx.Eject(carrier, lp, ld, casingLength * k, casingKind, casingMk, GlowPrefs.Resolve(casingGlow), rb, ejectPush * k, lf, la,
+                      gun.ejectSound);
+        // механизм выброса (Смоки, Гром — звуки Tanki X): открывается с вылетом гильзы, закрывается чуть позже
+        if (!string.IsNullOrEmpty(gun.ejectorOpenSound)) Sfx.PlayAt(gun.ejectorOpenSound, pos, 1f, 1f, Sfx.NearRange);
+        if (!string.IsNullOrEmpty(gun.ejectorCloseSound))
+        {
+            ejectorCloseAt = Time.time + EjectorCloseDelay;
+            ejectorCloseCarrier = carrier;
+            ejectorCloseLocal = lp;
+        }
+    }
+
+    const float EjectorCloseDelay = 0.35f;   // от вылета гильзы до закрытия механизма, с
+    const float ReloadEndLead = 0.35f;       // звук конца перезарядки — за столько до готовности, с
+
+    // Перезарядка (Шафт): звук сразу после выстрела и к концу перезарядки
+    void ReloadSounds(float reload)
+    {
+        if (!string.IsNullOrEmpty(gun.reloadStartSound)) Sfx.PlayAt(gun.reloadStartSound, muzzle.position, 1f, 1f, Sfx.NearRange);
+        reloadSoundAt = string.IsNullOrEmpty(gun.reloadEndSound) ? 0f : Time.time + Mathf.Max(0.2f, reload - ReloadEndLead);
+    }
+
+    void UpdateTimedSounds()
+    {
+        if (gun == null) return;
+        if (ejectorCloseAt > 0f && Time.time >= ejectorCloseAt)
+        {
+            ejectorCloseAt = 0f;
+            if (ejectorCloseCarrier != null)
+                Sfx.PlayAt(gun.ejectorCloseSound, ejectorCloseCarrier.TransformPoint(ejectorCloseLocal), 1f, 1f, Sfx.NearRange);
+        }
+        if (reloadSoundAt > 0f && Time.time >= reloadSoundAt)
+        {
+            reloadSoundAt = 0f;
+            bool alive = ownHealth == null || ownHealth.Current > 0f;
+            if (alive && muzzle != null) Sfx.PlayAt(gun.reloadEndSound, muzzle.position, 1f, 1f, Sfx.NearRange);
+        }
     }
 
     // Наклон башни (её «вперёд») к горизонту, градусы (+ нос башни вверх)
@@ -518,7 +569,7 @@ public class TankShooter : MonoBehaviour
             {
                 nextShotTime = Time.time + gun.reloadTime * reloadMultiplier;
                 aim = ComputeAim();
-                Sfx.PlayAt(gun.shotSound, muzzle.position, 0.9f, Random.Range(0.95f, 1.05f));
+                Sfx.PlayAt(gun.shotSound, muzzle.position);
                 FireShot(hitscan);
             }
         }
@@ -565,7 +616,7 @@ public class TankShooter : MonoBehaviour
     // Прогрев Рельсы: звук (в нём уже есть прогрев) и зарядка — искры и сгусток у дула
     void WindupFx()
     {
-        Sfx.PlayAt(gun.shotSound, muzzle.position, 1f);
+        Sfx.PlayAt(gun.shotSound, muzzle.position);
         if (gun.pierce) ShotFx.RailCharge(muzzle, gun.windupTime, gun.projectileColor);
     }
 
@@ -658,7 +709,8 @@ public class TankShooter : MonoBehaviour
         rayEnd = end;
         rayNormal = endNormal;
         rayFlags = (byte)((hitAny ? RayHitAny : 0) | (hitTank ? RayHitTank : 0) | (crit ? RayCrit : 0) |
-                          (primary != null ? RayPrimary : 0) | (explode ? RayExplode : 0) | (rightBarrel ? RayRight : 0));
+                          (primary != null ? RayPrimary : 0) | (explode ? RayExplode : 0) | (rightBarrel ? RayRight : 0) |
+                          (scopedShot ? RayScoped : 0));
     }
 
     // Трассер и попадание мгновенного выстрела (у своего танка — из FireRay, у чужого — по сети, RemoteRay)
@@ -678,7 +730,14 @@ public class TankShooter : MonoBehaviour
             if (IsShell && gun.splashRadius <= 0f) ParticleFx.Scorch(end, endNormal, 0.9f, new Color(1f, 0.45f, 0.15f), 18f);
             else if (gun.pierce) ParticleFx.Scorch(end, endNormal, 0.6f, Color.Lerp(gun.projectileColor, Color.white, 0.5f), 14f);
         }
-        Sfx.PlayAt(gun.hitSound, end, 0.85f, gun.hitPitch);
+        string hitKey = scopedShot && !string.IsNullOrEmpty(gun.scopedHitSound) ? gun.scopedHitSound : gun.hitSound;
+        Sfx.PlayAt(hitKey, end, 1f, gun.hitPitch);
+    }
+
+    // Звук выстрела Шафта: навскидку или из прицела
+    string SniperShotSound(bool scoped)
+    {
+        return scoped && !string.IsNullOrEmpty(gun.scopedShotSound) ? gun.scopedShotSound : gun.shotSound;
     }
 
     bool DealDamage(Health t, Vector3 point, float dist, Vector3 dir, float damageOverride, float impactOverride, bool allowCrit)
@@ -1181,7 +1240,9 @@ public class TankShooter : MonoBehaviour
         Charge01 = 0f;
         nextShotTime = Time.time + gun.reloadTime * reloadMultiplier;
 
-        Sfx.PlayAt(gun.shotSound, muzzle.position, 1f);
+        scopedShot = scoped;
+        Sfx.PlayAt(SniperShotSound(scoped), muzzle.position);
+        ReloadSounds(gun.reloadTime * reloadMultiplier);
         float flash = scoped ? 1f + charge : 1f;   // заряженный — ярче
         MuzzleFx(flash);
 
@@ -1198,6 +1259,7 @@ public class TankShooter : MonoBehaviour
         }
         float kick = scoped ? Mathf.Lerp(0.75f, 1f, charge) : 0.75f;
         if (net != null) net.SendRay(aim.direction, rayEnd, rayNormal, rayFlags, flash, kick);
+        scopedShot = false;
         Kick(kick);
     }
 
@@ -1271,11 +1333,17 @@ public class TankShooter : MonoBehaviour
     {
         if (gun == null || muzzle == null) return;
         if (muzzleSide > 0f) SetBarrel((flags & RayRight) != 0);
-        if (gun.kind == GunKind.Sniper) Sfx.PlayAt(gun.shotSound, muzzle.position, 1f);
-        else if (gun.windupTime <= 0f) Sfx.PlayAt(gun.shotSound, muzzle.position, 0.9f, Random.Range(0.95f, 1.05f));   // у Рельсы звук был с прогревом
+        scopedShot = (flags & RayScoped) != 0;
+        if (gun.kind == GunKind.Sniper)
+        {
+            Sfx.PlayAt(SniperShotSound(scopedShot), muzzle.position);
+            ReloadSounds(gun.reloadTime * reloadMultiplier);
+        }
+        else if (gun.windupTime <= 0f) Sfx.PlayAt(gun.shotSound, muzzle.position);   // у Рельсы звук был с прогревом
         MuzzleFx(flash);
         if ((flags & RayExplode) != 0) ExplosionFx(end);
         RayImpact(end, normal, (flags & RayHitAny) != 0, (flags & RayHitTank) != 0, (flags & RayCrit) != 0, (flags & RayPrimary) != 0);
+        scopedShot = false;
         Kick(kick);
     }
 
@@ -1284,7 +1352,7 @@ public class TankShooter : MonoBehaviour
     {
         if (gun == null || muzzle == null) return;
         if (muzzleSide > 0f) SetBarrel(right);
-        Sfx.PlayAt(gun.shotSound, muzzle.position, 0.9f, Random.Range(0.95f, 1.05f));
+        Sfx.PlayAt(gun.shotSound, muzzle.position);
         MuzzleFx(1f);
         Projectile p = ShotFx.Bolt(muzzle.position, gun);
         p.Init(dir, gun, 0, ownHealth, rb, damageMultiplier, false);   // команда 0: задевает всех, кроме своего танка

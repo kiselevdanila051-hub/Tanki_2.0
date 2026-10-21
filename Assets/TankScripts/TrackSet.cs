@@ -25,6 +25,7 @@ public class TrackSet
 
     public Mesh link, road, idler, sprocket;   // road — каток с бандажами (подсетки: 0 — сталь, 1 — резина)
     public Mesh linkB;                         // необязательный второй трак: траки чередуются link / linkB («кладка», М3)
+    public int mk;                             // модификация набора (отпечаток траков на земле — TrackMarks)
     public Mesh arm, mount, mountDamper, damper, roller;
     public Color steel, linkSteel, rubber;
     // Наружная сторона колеса (колпак ступицы выступает наружу) — знак x центра сетки: импорт OBJ в Unity
@@ -53,7 +54,7 @@ public class TrackSet
         Mesh sprocket = Resources.Load<Mesh>(f + "sprocket");
         if (link == null || road == null || idler == null || sprocket == null) return null;
 
-        TrackSet s = new TrackSet { link = link, idler = idler, sprocket = sprocket };
+        TrackSet s = new TrackSet { link = link, idler = idler, sprocket = sprocket, mk = mk };
         s.linkB = Resources.Load<Mesh>(f + "link_b");
         s.road = WithTire(road, tire);
         s.arm = Resources.Load<Mesh>(f + "arm");

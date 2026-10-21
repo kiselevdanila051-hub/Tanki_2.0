@@ -6,9 +6,21 @@ using UnityEngine;
 //  Арена — волны ботов с ИИ (сложность, число врагов в волне, их модификации и вооружение); Полигон — манекены без ИИ.
 // G — вернуться в гараж, R — заново после поражения (на арене). Каждый танк — свой экземпляр префаба PlayerModel
 // (TankFactory); после боя танки разбираются (TankFactory.Dispose), а модели ботов и прочее ненужное выгружается из памяти.
+// Сетевой бой (Mirror, TankNetworkManager — кнопки NetworkManagerHUD): гараж и свой бой убираются, карту выбирает сервер,
+// танки создаёт сеть — свой получает управление и камеру (AttachOnlinePlayer, и после каждого возрождения — новый танк);
+// волн и манекенов нет; лента уничтожений (AddKill), Tab — таблица счёта; G — выход.
 public class GameManager : MonoBehaviour
 {
+    public static GameManager Instance { get; private set; }
     public static bool UiOpen;                 // открыта панель (курсор свободен)
+    public static bool Quitting;               // игра закрывается (остановка сети не возвращает в гараж)
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics()
+    {
+        Instance = null;
+        Quitting = false;
+    }
 
     public float healBetweenWaves = 0.3f;      // доля здоровья, которая лечится после волны
     public float timeBetweenWaves = 4f;
@@ -43,6 +55,7 @@ public class GameManager : MonoBehaviour
 
     public void Init(Camera camera, TankCamera tankCamera)
     {
+        Instance = this;
         cam = camera;
         tcam = tankCamera;
         useGUILayout = false;                 // интерфейс боя без GUILayout — без лишнего прохода Layout
@@ -121,7 +134,22 @@ public class GameManager : MonoBehaviour
     void SpawnPlayer()
     {
         if (player != null) TankFactory.Dispose(player);
-        player = TankFactory.Create("Player Tank", MapBuilder.PlayerSpawn, true, 1, chosenHull, chosenHullMk, chosenGun, chosenGunMk);
+        GameObject tank = TankFactory.Create("Player Tank", MapBuilder.PlayerSpawn, true, 1, chosenHull, chosenHullMk, chosenGun, chosenGunMk);
+        // Поворот из точки появления — до Start (прицел берёт направление корпуса); и телу тоже: с интерполяцией
+        // Rigidbody перезаписывает transform своей позой
+        tank.transform.rotation = MapBuilder.PlayerRotation;
+        tank.GetComponent<Rigidbody>().rotation = MapBuilder.PlayerRotation;
+        BindPlayer(tank);
+        if (testRange != null) testRange.SetPlayer(player);
+    }
+
+    // Танк игрока: ссылки для интерфейса, лазер и индикатор попаданий, камера (свой бой — SpawnPlayer, сеть — AttachOnlinePlayer).
+    // В сети прежний танк после возрождения остаётся остовом — от него отвязываемся
+    void BindPlayer(GameObject tank)
+    {
+        if (playerHealth != null) playerHealth.Died -= OnPlayerDied;
+        if (playerSight != null) Destroy(playerSight);
+        player = tank;
         playerHealth = player.GetComponent<Health>();
         playerInput = player.GetComponent<PlayerInput>();
         playerRb = player.GetComponent<Rigidbody>();
@@ -129,19 +157,96 @@ public class GameManager : MonoBehaviour
         playerShooter = player.GetComponent<TankShooter>();
         playerSelfDestruct = player.GetComponent<SelfDestruct>();
         playerSight = player.AddComponent<AimSight>();   // лазер, прицел ручной наводки и индикатор попаданий
-        // Поворот из точки появления — до Start (прицел берёт направление корпуса); и телу тоже: с интерполяцией
-        // Rigidbody перезаписывает transform своей позой
-        player.transform.rotation = MapBuilder.PlayerRotation;
-        playerRb.rotation = MapBuilder.PlayerRotation;
         playerHealth.Died += OnPlayerDied;
 
         tcam.target = player.transform;
         tcam.turret = player.GetComponent<TurretController>();
-        tcam.shooter = player.GetComponent<TankShooter>();
+        tcam.shooter = playerShooter;
         tcam.enabled = true;
         gameOver = false;
+    }
 
-        if (testRange != null) testRange.SetPlayer(player);
+    // ---------- Сетевой бой (TankNetworkManager) ----------
+    public bool Online { get; private set; }
+
+    // Сеть запущена (хост, клиент или сервер): гараж и свой бой убираются; комплект из гаража запоминается — он уйдёт
+    // серверу (Loadout)
+    public void BeginOnline()
+    {
+        if (Online) return;
+        if (state == State.Garage)   // из своего боя гараж уже скрыт (повторный Hide вернул бы свет гаража вместо карты)
+        {
+            garage.Installed(out chosenHull, out chosenHullMk, out chosenGun, out chosenGunMk);
+            garage.Hide();
+        }
+        CleanupBattle();
+        Online = true;
+        state = State.Battle;
+        UiOpen = false;
+        gameOver = false;
+        Cursor.lockState = CursorLockMode.Locked;
+        if (ambient != null && ambient.clip != null) ambient.Play();
+    }
+
+    // Карта сетевого боя (сервер — своя из настроек боя, клиент — от сервера). Пока своего танка нет (сервер без игрока,
+    // клиент до появления танка), камера смотрит на точку появления сверху
+    public void SetOnlineMap(MapId map)
+    {
+        chosenMap = map;
+        MapBuilder.Ensure(map);
+        if (player != null) return;
+        Vector3 spawn = MapBuilder.PlayerSpawn;
+        cam.transform.position = spawn + MapBuilder.PlayerRotation * new Vector3(0f, 14f, -18f);
+        cam.transform.LookAt(spawn);
+    }
+
+    // Свой танк в сети (NetworkTank.OnStartLocalPlayer, в том числе после возрождения): сеть создаёт его как чужой — делаем
+    // танком игрока
+    public void AttachOnlinePlayer(GameObject tank)
+    {
+        if (!Online || tank == null || tank == player) return;
+        Health hp = tank.GetComponent<Health>();
+        hp.team = 1;
+        hp.showBar = false;
+        tank.GetComponent<TankShooter>().team = 1;
+        tank.GetComponent<TankBuilder>().isPlayer = true;
+        if (tank.GetComponent<PlayerInput>() == null) tank.AddComponent<PlayerInput>();
+        BindPlayer(tank);
+    }
+
+    // Сеть остановлена (выход, отключение, сервер закрылся) — в гараж. Танки сети удаляет Mirror (TankNetworkManager.UnspawnTank,
+    // NetworkServer), поэтому ссылка на свой танк просто забывается
+    public void EndOnline()
+    {
+        if (!Online) return;
+        Online = false;
+        killFeed.Clear();
+        if (Quitting) return;
+        if (playerHealth != null) playerHealth.Died -= OnPlayerDied;
+        player = null;
+        EnterGarage();
+        StartCoroutine(ReleaseMemory());
+    }
+
+    // Лента уничтожений (TankNetworkManager, KillMessage): последние строки, каждая — несколько секунд
+    struct KillLine { public string text; public float until; }
+    readonly List<KillLine> killFeed = new List<KillLine>();
+    const int KillFeedSize = 5;
+    const float KillFeedTime = 6f;
+
+    public void AddKill(string killer, string victim, string weapon)
+    {
+        string text = string.IsNullOrEmpty(killer) ? victim + " — самоуничтожение"
+                    : killer + (string.IsNullOrEmpty(weapon) ? "" : "  [" + weapon + "]  ") + "→  " + victim;
+        killFeed.Add(new KillLine { text = text, until = Time.time + KillFeedTime });
+        while (killFeed.Count > KillFeedSize) killFeed.RemoveAt(0);
+    }
+
+    // Комплект, с которым игрок выходит в сетевой бой
+    public void Loadout(out HullType hull, out int hullMk, out GunType gun, out int gunMk)
+    {
+        hull = chosenHull; hullMk = chosenHullMk;
+        gun = chosenGun; gunMk = chosenGunMk;
     }
 
     void CleanupBattle()
@@ -184,10 +289,19 @@ public class GameManager : MonoBehaviour
     {
         if (state != State.Battle) return;
 
-        if (Input.GetKeyDown(KeyCode.G) && !UiOpen) { EnterGarage(); return; }
+        if (Input.GetKeyDown(KeyCode.G) && !UiOpen)
+        {
+            if (Online)
+            {
+                TankNetworkManager.Leave();
+                EndOnline();   // если остановка сети не вызвала колбэков (сеть уже не работала)
+            }
+            else EnterGarage();
+            return;
+        }
         if (Input.GetMouseButtonDown(0) && Cursor.lockState != CursorLockMode.Locked && !UiOpen)
             Cursor.lockState = CursorLockMode.Locked;
-        if (player == null) return;
+        if (player == null || Online) return;   // в сети нет волн, манекенов и возрождения
 
         if (chosenMap == MapId.TestRange)
         {
@@ -320,7 +434,15 @@ public class GameManager : MonoBehaviour
         if (playerSight != null) playerSight.DrawHud();
         if (playerSelfDestruct != null) playerSelfDestruct.DrawHud();
 
-        if (chosenMap == MapId.TestRange)
+        if (Online)
+        {
+            GUI.Label(new Rect(Screen.width - 420f, 10f, 400f, 26f), "Сетевой бой  |  Tab — счёт  |  G — выйти в гараж", smallStyle);
+            DrawKillFeed();
+            if (Input.GetKey(KeyCode.Tab)) DrawScoreboard();
+            if (gameOver)
+                GUI.Label(new Rect(0, Screen.height / 2f - 40, Screen.width, 50), "Танк уничтожен — возрождение...", bigStyle);
+        }
+        else if (chosenMap == MapId.TestRange)
         {
             GUI.Label(new Rect(Screen.width - 420f, 10f, 400f, 26f), "Полигон  |  T — манекены  |  Y — стенд деформации", smallStyle);
             if (gameOver)
@@ -353,5 +475,46 @@ public class GameManager : MonoBehaviour
         GUI.color = Color.white;
         GUI.Label(new Rect(bg.x, bg.y - 28f, w, 26f),
             "Прочность: " + Mathf.CeilToInt(playerHealth.Current) + " / " + Mathf.CeilToInt(playerHealth.maxHealth), midStyle);
+    }
+
+    // Лента уничтожений сетевого боя — справа сверху, под подсказкой
+    void DrawKillFeed()
+    {
+        float y = 38f;
+        foreach (KillLine k in killFeed)
+        {
+            if (Time.time > k.until) continue;
+            GUI.Label(new Rect(Screen.width - 620f, y, 600f, 24f), k.text, smallStyle);
+            y += 24f;
+        }
+    }
+
+    // Таблица счёта сетевого боя (Tab): игроки по числу уничтожений; свой — выделен
+    void DrawScoreboard()
+    {
+        List<NetworkTank> rows = new List<NetworkTank>();
+        foreach (NetworkTank t in NetworkTank.All) if (t != null && t.Networked) rows.Add(t);
+        rows.Sort((a, b) => a.kills != b.kills ? b.kills.CompareTo(a.kills) : a.deaths.CompareTo(b.deaths));
+        float w = 460f, rowH = 28f, h = 44f + rowH * rows.Count;
+        Rect r = new Rect(Screen.width / 2f - w / 2f, Screen.height * 0.22f, w, h);
+        GUI.color = new Color(0f, 0f, 0f, 0.72f);
+        GUI.DrawTexture(r, Texture2D.whiteTexture);
+        GUI.color = Color.white;
+        TextAnchor anchor = midStyle.alignment;
+        midStyle.alignment = TextAnchor.MiddleLeft;
+        GUI.Label(new Rect(r.x + 16f, r.y + 6f, 260f, 30f), "Игрок", midStyle);
+        GUI.Label(new Rect(r.x + 290f, r.y + 6f, 80f, 30f), "Уничт.", midStyle);
+        GUI.Label(new Rect(r.x + 380f, r.y + 6f, 80f, 30f), "Гибели", midStyle);
+        for (int i = 0; i < rows.Count; i++)
+        {
+            NetworkTank t = rows[i];
+            float y = r.y + 40f + rowH * i;
+            GUI.color = t.Controlled ? new Color(0.55f, 1f, 0.55f) : Color.white;
+            GUI.Label(new Rect(r.x + 16f, y, 260f, rowH), t.playerName, midStyle);
+            GUI.Label(new Rect(r.x + 290f, y, 80f, rowH), t.kills.ToString(), midStyle);
+            GUI.Label(new Rect(r.x + 380f, y, 80f, rowH), t.deaths.ToString(), midStyle);
+        }
+        GUI.color = Color.white;
+        midStyle.alignment = anchor;
     }
 }

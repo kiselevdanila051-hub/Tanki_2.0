@@ -6,11 +6,13 @@ using UnityEngine;
 // пока не кончатся отскоки; отскочивший снаряд может задеть и свой танк (урон × GunStats.selfDamageFactor).
 // Объект снаряда — плазмоид из пула ShotFx (шар плазмы, хвост, свет): по окончании полёта шар и свет гаснут сразу, хвост
 // дотаивает, затем объект возвращается в пул (ShotFx.ReleaseBolt), а не уничтожается.
+// Плазмоид чужого танка в сетевом бою — «пустышка» (live = false): летит и бьётся так же, но урона не наносит (его считает сервер).
 public class Projectile : MonoBehaviour
 {
     Vector3 direction;
     float speed, remainingRange, travelled, dmgMul;
     int ownerTeam, bouncesLeft;
+    bool live;
     GunStats gun;
     Health owner;
     Rigidbody ownerRb;
@@ -24,8 +26,9 @@ public class Projectile : MonoBehaviour
     bool bounced;                                   // после отскока снаряд опасен и для своего танка
     float dieAt;
 
-    public void Init(Vector3 dir, GunStats g, int team, Health ownerHealth, Rigidbody rb, float damageMultiplier)
+    public void Init(Vector3 dir, GunStats g, int team, Health ownerHealth, Rigidbody rb, float damageMultiplier, bool dealsDamage = true)
     {
+        live = dealsDamage;
         direction = dir.normalized;
         gun = g;
         speed = g.projectileSpeed;
@@ -73,7 +76,7 @@ public class Projectile : MonoBehaviour
             Health h = hit.collider.GetComponentInParent<Health>();
             if (h != null && h.Current > 0f)
             {
-                if (alreadyHit.Add(h))
+                if (alreadyHit.Add(h) && live)
                 {
                     bool crit = gun.critChance > 0f && Random.value < gun.critChance;
                     float dist = travelled + hit.distance;

@@ -18,12 +18,20 @@ public static class Combat
         GunStats gun = null, bool splash = false, Health source = null)
     {
         if (target == null || target.Current <= 0f) return;
+        // Сетевой бой: попадание по сетевому танку считает сервер (NetworkTank.CmdHit → RpcHit), здесь только отправка
+        if (NetworkTank.Relay(target, damage, crit, point, dir, impulse, splash, source)) return;
         TankDamage td = target.GetComponent<TankDamage>();
         if (td != null) td.NoteHit(point, dir);
         target.TakeDamage(damage, crit);
         bool killed = target.Current <= 0f;
         if (td != null && !killed) td.OnHit(point, dir, damage, impulse, gun, splash);   // вмятины, следы, отрыв деталей
         if (impulse > 0f) Knock(target.gameObject, point, dir, impulse, true);
+        if (HitDealt != null && source != null && source != target) HitDealt(source, target, point, crit, killed, splash);
+    }
+
+    // Сервер подтвердил попадание по сетевому танку (NetworkTank.RpcHit у стрелявшего) — индикатор попаданий
+    public static void NotifyHit(Health source, Health target, Vector3 point, bool crit, bool killed, bool splash)
+    {
         if (HitDealt != null && source != null && source != target) HitDealt(source, target, point, crit, killed, splash);
     }
 

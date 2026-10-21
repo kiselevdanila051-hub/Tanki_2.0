@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // Здоровье объекта. team: 0 — нейтральные мишени (получают урон от всех), 1 — игрок, 2 — враги.
+// В сетевом бою прочность танков ведёт сервер: на клиентах (serverDriven) свой урон, лечение и самоуничтожение не считаются,
+// значение приходит по сети (ApplyNet, NetworkTank).
 public class Health : MonoBehaviour
 {
     public static readonly List<Health> All = new List<Health>();   // все живые цели (для автонаводки)
@@ -13,6 +15,7 @@ public class Health : MonoBehaviour
     public bool showBar = false;        // полоска здоровья над объектом
     public bool invulnerable = false;   // бессмертие (для полигона): цифры урона есть, здоровье не убывает
     public bool isTank = false;
+    [System.NonSerialized] public bool serverDriven;   // сетевой танк на клиенте: прочность только с сервера (ApplyNet)
 
     public float Current { get; private set; }
     public event System.Action Died;
@@ -68,20 +71,28 @@ public class Health : MonoBehaviour
 
     public void Heal(float amount)
     {
-        if (Current <= 0f) return;
+        if (serverDriven || Current <= 0f) return;
         Current = Mathf.Min(maxHealth, Current + amount);
     }
 
     // Самоуничтожение: мгновенная гибель (бессмертных не трогаем)
     public void Kill()
     {
-        if (Current <= 0f || invulnerable) return;
+        if (serverDriven || Current <= 0f || invulnerable) return;
         TakeDamage(Current + 1f);
+    }
+
+    // Прочность с сервера (сетевой бой): ноль — гибель; уничтоженный так и остаётся остовом
+    public void ApplyNet(float value)
+    {
+        if (Current <= 0f) return;
+        Current = Mathf.Clamp(value, 0f, maxHealth);
+        if (Current <= 0f) Die();
     }
 
     public void TakeDamage(float amount, bool crit = false)
     {
-        if (Current <= 0f || amount <= 0f) return;
+        if (serverDriven || Current <= 0f || amount <= 0f) return;
         if (team != 1) DamageNumbers.Spawn(this, AimCenter + Vector3.up * 1.3f, amount, crit);
         if (invulnerable) return;
 

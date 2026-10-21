@@ -621,7 +621,7 @@ public partial class TankDamage : MonoBehaviour
 
         // Гусеницы рвутся — траки разлетаются, остальное лежит
         TrackVisuals tv = GetComponent<TrackVisuals>();
-        if (tv != null && !RingTest.Skip("shatter")) tv.Shatter(center, rb != null ? rb.linearVelocity : Vector3.zero);
+        if (tv != null && !RingTest.Skip("shatter")) tv.Shatter(center, NetworkTank.VelocityOf(rb));
 
         // Катки, ленивцы и ведущие колёса вылетают
         List<Renderer> list = new List<Renderer>(wheels);
@@ -671,7 +671,7 @@ public partial class TankDamage : MonoBehaviour
         Rigidbody trb = tur.gameObject.AddComponent<Rigidbody>();
         trb.mass = 500f;
         trb.maxDepenetrationVelocity = 4f;
-        Vector3 baseVel = tankRb != null ? tankRb.linearVelocity : Vector3.zero;
+        Vector3 baseVel = NetworkTank.VelocityOf(tankRb);
         trb.linearVelocity = baseVel + Vector3.up * Random.Range(8f, 11f) + new Vector3(Random.Range(-2.5f, 2.5f), 0f, Random.Range(-2.5f, 2.5f));
         trb.angularVelocity = Random.insideUnitSphere * 4f;
 

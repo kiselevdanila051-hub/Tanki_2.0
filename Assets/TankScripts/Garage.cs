@@ -77,6 +77,13 @@ public class Garage : MonoBehaviour
         visible = true;
     }
 
+    // Установленный комплект (уходит в бой, в том числе в сетевой — GameManager.BeginOnline)
+    public void Installed(out HullType h, out int hMk, out GunType g, out int gMk)
+    {
+        h = hullType; hMk = hullMk;
+        g = gunType; gMk = gunMk;
+    }
+
     public void Hide()
     {
         visible = false;

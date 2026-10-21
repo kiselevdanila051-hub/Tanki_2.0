@@ -73,7 +73,7 @@ public class TankAudio : MonoBehaviour
         bool alive = health == null || health.Current > 0f;
 
         // --- Двигатель ---
-        float speed = rb.linearVelocity.magnitude;
+        float speed = NetworkTank.VelocityOf(rb).magnitude;   // у чужого танка в сети — по смещению позы
         float maxSpeed = (controller != null && controller.stats != null) ? controller.stats.maxSpeed : 8f;
         float ratio = Mathf.Clamp01(speed / Mathf.Max(1f, maxSpeed));
         bool throttle = alive && (Mathf.Abs(input.Throttle) > 0.1f || Mathf.Abs(input.Steer) > 0.1f);

@@ -3,6 +3,7 @@ using UnityEngine;
 // Перевёрнутый танк ездить не может (гусеницы не касаются земли). Как в Танках Онлайн:
 // Delete — самоуничтожение через 3 секунды (можно в любой момент). Боты, пролежавшие
 // перевёрнутыми 5 секунд, самоуничтожаются сами, чтобы волна не застревала.
+// В сетевом бою работает только у своего танка (NetworkTank), а уничтожает танк сервер.
 public class SelfDestruct : MonoBehaviour
 {
     public float countdown = 3f;
@@ -28,6 +29,8 @@ public class SelfDestruct : MonoBehaviour
     void Update()
     {
         if (health == null || health.Current <= 0f) { destructAt = -1f; return; }
+        // управление игрока могло появиться позже (свой танк в сети получает его, когда сеть отдаёт танк игроку)
+        if (playerInput == null) playerInput = GetComponent<PlayerInput>();
 
         flippedTime = Flipped ? flippedTime + Time.deltaTime : 0f;
 
@@ -44,7 +47,9 @@ public class SelfDestruct : MonoBehaviour
         if (destructAt > 0f && Time.time >= destructAt)
         {
             destructAt = -1f;
-            health.Kill();
+            NetworkTank net = GetComponent<NetworkTank>();
+            if (net != null && net.Controlled) net.RequestSelfDestruct();
+            else health.Kill();
         }
     }
 

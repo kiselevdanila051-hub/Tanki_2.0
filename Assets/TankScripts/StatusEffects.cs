@@ -117,7 +117,7 @@ public class StatusEffects : MonoBehaviour
         {
             if (hullCol == null) hullCol = GetComponent<Collider>();
             if (body == null) body = GetComponent<Rigidbody>();
-            Vector3 vel = body != null ? body.linearVelocity : Vector3.zero;
+            Vector3 vel = NetworkTank.VelocityOf(body);
             if (Time.time < burnUntil || Heat > 0.4f)
             {
                 fireAcc += Heat * 14f * dt;

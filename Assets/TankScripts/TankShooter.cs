@@ -11,6 +11,9 @@ using UnityEngine;
 // Kick / UpdateRecoil (гильзы — ShellFx: выдвигаются из окна, дальше летят по физике).
 // Обычно работает автонаводка (AutoAim): ствол сам наклоняется к цели в пределах своих углов. При ручной наводке игрока
 // (manualAim, выставляет PlayerInput по AimPrefs) ствол наклоняет мышь (TankInput.AimPitch), выстрел идёт вдоль ствола.
+// Сетевой бой (NetworkTank): свой танк (net) стреляет как обычно, но попадания по сетевым танкам уходят серверу, а выстрелы —
+// остальным игрокам; чужой танк (remote) ничего не считает — рисует пришедшие выстрелы (RemoteRay, RemoteBolt, RemoteWindup),
+// струю, дугу и прицел Шафта по присланному состоянию (SetRemote).
 public class TankShooter : MonoBehaviour
 {
     public Transform muzzle;
@@ -26,6 +29,18 @@ public class TankShooter : MonoBehaviour
     public bool autoReleaseAtFullCharge = false;  // боты с Шафтом стреляют сами при полном заряде
     public bool manualAim;                        // ручная наводка игрока: без автоприцеливания, ствол — по TankInput.AimPitch
     public Transform laserEmitter;                // излучатель лазерного целеуказателя на модели башни (null — нет на модели)
+    [System.NonSerialized] public NetworkTank net;   // свой танк в сетевом бою: выстрелы и попадания — по сети
+    [System.NonSerialized] public bool remote;       // чужой сетевой танк: только рисует присланное
+
+    // Чужой танк: наклон ствола, струя / дуга, прицел Шафта и цель дуги Изиды — по сети (SetRemote)
+    float remotePitch;
+    bool remoteFire, remoteScope;
+    Health remoteTarget;
+
+    // Чем кончился последний мгновенный выстрел (FireRay) — для отправки остальным игрокам
+    Vector3 rayEnd, rayNormal;
+    byte rayFlags;
+    const byte RayHitAny = 1, RayHitTank = 2, RayCrit = 4, RayPrimary = 8, RayExplode = 16, RayRight = 32;
 
     // Откат подвижных частей ствола и выброс гильз (SetRecoil — из TankBuilder): части двигаются назад вдоль оси ствола
     // (быстро назад, плавно на место), гильза вылетает из окна выброса с задержкой, когда открывается затвор
@@ -137,6 +152,12 @@ public class TankShooter : MonoBehaviour
             StopFiring();
             return;
         }
+        if (remote)
+        {
+            UpdateRemote();
+            input.Scoping = IsScoping;
+            return;
+        }
 
         if (Time.time >= nextAimTime)
         {
@@ -184,11 +205,13 @@ public class TankShooter : MonoBehaviour
     {
         if (gunPivot == null || gun == null) return;
         float target;
-        if (team == 1 && manualAim && !IsScoping)
+        if (remote)
+            target = remotePitch;                                         // чужой танк: наклон с сети
+        else if (team == 1 && manualAim && !IsScoping)
             target = Mathf.Clamp(input.AimPitch - TurretElevation, -gun.aimDown, gun.aimUp);
         else
             target = ManualPitch ? input.AimPitch : aim.elevation;
-        float speed = team == 1 && manualAim ? 160f : 80f;               // стабилизатору нужен быстрый привод
+        float speed = remote || (team == 1 && manualAim) ? 160f : 80f;   // стабилизатору нужен быстрый привод
         barrelPitch = Mathf.MoveTowards(barrelPitch, target, speed * Time.deltaTime);
         gunPivot.localRotation = Quaternion.Euler(-barrelPitch, 0f, 0f);
         UpdateRecoil();
@@ -488,8 +511,8 @@ public class TankShooter : MonoBehaviour
             {
                 winding = true;
                 windupEnd = Time.time + gun.windupTime;
-                Sfx.PlayAt(gun.shotSound, muzzle.position, 1f);   // звук Рельсы уже содержит прогрев
-                if (gun.pierce) ShotFx.RailCharge(muzzle, gun.windupTime, gun.projectileColor);   // зарядка: искры и сгусток у дула
+                WindupFx();
+                if (net != null) net.SendWindup();
             }
             else
             {
@@ -503,16 +526,8 @@ public class TankShooter : MonoBehaviour
 
     void FireShot(bool hitscan)
     {
-        if (muzzleSide > 0f)
-        {
-            // Поочерёдно из левого и правого ствола
-            rightBarrel = !rightBarrel;
-            Vector3 lp = muzzle.localPosition;
-            lp.x = rightBarrel ? muzzleSide : -muzzleSide;
-            muzzle.localPosition = lp;
-        }
-        ParticleFx.MuzzleFlash(muzzle.position, muzzle.forward, gun.FlashColor, gun.muzzleFlash, gun.muzzleSmoke > 0f);   // пороховые — с «усами» дульного тормоза
-        if (gun.muzzleSmoke > 0f) ParticleFx.MuzzleSmoke(muzzle.position, muzzle.forward, gun.muzzleSmoke, rb, gun.smokeOpacity);   // Смоки, Гром
+        if (muzzleSide > 0f) SetBarrel(!rightBarrel);   // поочерёдно из левого и правого ствола
+        MuzzleFx(1f);
         Vector3 dir;
         if (hitscan)
         {
@@ -520,13 +535,38 @@ public class TankShooter : MonoBehaviour
             float width = gun.pierce ? 0.14f : (gun.splashRadius > 0f ? 0.07f : 0.04f);
             float life = gun.pierce ? 0.2f : 0.06f;
             FireRay(dir, -1f, -1f, true, width, life);
+            if (net != null) net.SendRay(dir, rayEnd, rayNormal, rayFlags, 1f, 1f);
         }
         else
         {
             dir = FireProjectile();
+            if (net != null) net.SendBolt(dir, rightBarrel);
         }
         Combat.Recoil(rb, controller, dir, gun.recoil, gun.recoilStagger, muzzle.position);
         Kick(1f);
+    }
+
+    // Ствол сдвоенной пушки, из которого выстрел: дуло перескакивает на его сторону
+    void SetBarrel(bool right)
+    {
+        rightBarrel = right;
+        Vector3 lp = muzzle.localPosition;
+        lp.x = right ? muzzleSide : -muzzleSide;
+        muzzle.localPosition = lp;
+    }
+
+    // Дульная вспышка (flash — множитель размера) и дым пороховых пушек
+    void MuzzleFx(float flash)
+    {
+        ParticleFx.MuzzleFlash(muzzle.position, muzzle.forward, gun.FlashColor, gun.muzzleFlash * flash, gun.muzzleSmoke > 0f);   // пороховые — с «усами» дульного тормоза
+        if (gun.muzzleSmoke > 0f) ParticleFx.MuzzleSmoke(muzzle.position, muzzle.forward, gun.muzzleSmoke, rb, gun.smokeOpacity);   // Смоки, Гром
+    }
+
+    // Прогрев Рельсы: звук (в нём уже есть прогрев) и зарядка — искры и сгусток у дула
+    void WindupFx()
+    {
+        Sfx.PlayAt(gun.shotSound, muzzle.position, 1f);
+        if (gun.pierce) ShotFx.RailCharge(muzzle, gun.windupTime, gun.projectileColor);
     }
 
     Vector3 FireProjectile()
@@ -611,25 +651,34 @@ public class TankShooter : MonoBehaviour
             if (!wall) hitTank = true;   // стены нет — вспышка на конце луча не нужна (на танках уже была)
         }
 
-        if (gun.splashRadius > 0f && hitAny) Explode(end, primary);
+        bool explode = gun.splashRadius > 0f && hitAny;
+        if (explode) Explode(end, primary);
 
+        RayImpact(end, endNormal, hitAny, hitTank, crit, primary != null);
+        rayEnd = end;
+        rayNormal = endNormal;
+        rayFlags = (byte)((hitAny ? RayHitAny : 0) | (hitTank ? RayHitTank : 0) | (crit ? RayCrit : 0) |
+                          (primary != null ? RayPrimary : 0) | (explode ? RayExplode : 0) | (rightBarrel ? RayRight : 0));
+    }
+
+    // Трассер и попадание мгновенного выстрела (у своего танка — из FireRay, у чужого — по сети, RemoteRay)
+    void RayImpact(Vector3 end, Vector3 endNormal, bool hitAny, bool hitTank, bool crit, bool primary)
+    {
         ShotFx.Shot(gun, muzzle.position, end, crit);   // трассер снаряда, луч Рельсы, росчерк пули Шафта
-        if (hitAny)
+        if (!hitAny) return;
+        // Вспышка попадания; по стене и земле — ещё искры и пыль (по танку искры даёт TankDamage)
+        float size = 0.5f + 0.4f * gun.muzzleFlash;
+        bool airEnd = gun.pierce && primary && hitTank;
+        // пороховой — с огнём; у Грома клуб разрыва рисует только взрыв (Explode), а не два клуба в одной точке
+        if (!airEnd) ParticleFx.ImpactFlash(end, endNormal, gun.FlashColor, size, true, gun.muzzleSmoke > 0f, gun.splashRadius > 0f ? 0f : gun.smokeOpacity);
+        if (!hitTank)
         {
-            // Вспышка попадания; по стене и земле — ещё искры и пыль (по танку искры даёт TankDamage)
-            float size = 0.5f + 0.4f * gun.muzzleFlash;
-            bool airEnd = gun.pierce && primary != null && hitTank;
-            // пороховой — с огнём; у Грома клуб разрыва рисует только взрыв (Explode), а не два клуба в одной точке
-            if (!airEnd) ParticleFx.ImpactFlash(end, endNormal, gun.FlashColor, size, true, gun.muzzleSmoke > 0f, gun.splashRadius > 0f ? 0f : gun.smokeOpacity);
-            if (!hitTank)
-            {
-                ParticleFx.SurfaceHit(end, endNormal, size);
-                // следы на земле и стенах: от снаряда Смоки — копоть, от луча Рельсы — раскалённое пятно (у Грома — во взрыве)
-                if (IsShell && gun.splashRadius <= 0f) ParticleFx.Scorch(end, endNormal, 0.9f, new Color(1f, 0.45f, 0.15f), 18f);
-                else if (gun.pierce) ParticleFx.Scorch(end, endNormal, 0.6f, Color.Lerp(gun.projectileColor, Color.white, 0.5f), 14f);
-            }
-            Sfx.PlayAt(gun.hitSound, end, 0.85f, gun.hitPitch);
+            ParticleFx.SurfaceHit(end, endNormal, size);
+            // следы на земле и стенах: от снаряда Смоки — копоть, от луча Рельсы — раскалённое пятно (у Грома — во взрыве)
+            if (IsShell && gun.splashRadius <= 0f) ParticleFx.Scorch(end, endNormal, 0.9f, new Color(1f, 0.45f, 0.15f), 18f);
+            else if (gun.pierce) ParticleFx.Scorch(end, endNormal, 0.6f, Color.Lerp(gun.projectileColor, Color.white, 0.5f), 14f);
         }
+        Sfx.PlayAt(gun.hitSound, end, 0.85f, gun.hitPitch);
     }
 
     bool DealDamage(Health t, Vector3 point, float dist, Vector3 dir, float damageOverride, float impactOverride, bool allowCrit)
@@ -678,13 +727,19 @@ public class TankShooter : MonoBehaviour
 
             if (h == ownHealth)
             {
-                if (gun.selfDamageFactor > 0f) Combat.Hit(h, dmg * gun.selfDamageFactor, false, h.AimCenter, push, gun.impact * 0.5f * f, gun, true);
+                // источник — свой танк: в сети попадание по себе тоже считает сервер (индикатора по себе нет)
+                if (gun.selfDamageFactor > 0f) Combat.Hit(h, dmg * gun.selfDamageFactor, false, h.AimCenter, push, gun.impact * 0.5f * f, gun, true, ownHealth);
             }
             else if (!(h.team == team && team != 0))
             {
                 Combat.Hit(h, dmg, false, h.AimCenter, push, gun.impact * 0.6f * f, gun, true, ownHealth);
             }
         }
+        ExplosionFx(point);
+    }
+
+    void ExplosionFx(Vector3 point)
+    {
         if (!ParticleFx.Explosion(point, gun.splashRadius * 0.15f, gun.smokeOpacity)) Fx.Explosion(point, gun.splashRadius * 0.6f, new Color(1f, 0.55f, 0.15f));
     }
 
@@ -747,14 +802,19 @@ public class TankShooter : MonoBehaviour
         {
             Health h = streamTargets[i];
             if (h == null || h.Current <= 0f) continue;
-            StatusEffects fx = h.GetComponent<StatusEffects>();
-            if (fx != null)
+            float heat = gun.burnFraction > 0f ? dt * 0.8f : 0f, freeze = gun.slowFactor < 1f ? dt * 0.7f : 0f;
+            if (net != null) net.Stream(h, dmg, heat, freeze, h.AimCenter, fwd);   // сеть: урон, нагрев и заморозку считает сервер
+            else
             {
-                if (gun.burnFraction > 0f) fx.AddHeat(dt * 0.8f, dps * gun.burnFraction, gun.burnDuration);
-                if (gun.slowFactor < 1f) fx.AddFreeze(dt * 0.7f, gun.slowFactor, gun.slowDuration);
+                StatusEffects fx = h.GetComponent<StatusEffects>();
+                if (fx != null)
+                {
+                    if (heat > 0f) fx.AddHeat(heat, dps * gun.burnFraction, gun.burnDuration);
+                    if (freeze > 0f) fx.AddFreeze(freeze, gun.slowFactor, gun.slowDuration);
+                }
+                Combat.Hit(h, dmg, false, h.AimCenter, fwd, 0f, gun, false, ownHealth);
             }
-            Combat.Hit(h, dmg, false, h.AimCenter, fwd, 0f, gun, false, ownHealth);
-            if (gun.lifeSteal > 0f && ownHealth != null) ownHealth.Heal(dmg * gun.lifeSteal);
+            if (gun.lifeSteal > 0f) Leech(dmg * gun.lifeSteal);
             if (gun.slowFactor < 1f && Random.value < 0.6f) ParticleFx.IceShards(SurfacePoint(origin, h), -fwd, 2);   // ледяные осколки от брони
         }
 
@@ -921,8 +981,16 @@ public class TankShooter : MonoBehaviour
             beamLock.Heal(dps * 0.5f * dt);
             return;
         }
-        Combat.Hit(beamLock, dps * dt, false, contact, fwd, 0f, gun, false, ownHealth);
-        if (gun.lifeSteal > 0f && ownHealth != null) ownHealth.Heal(dps * dt * gun.lifeSteal);
+        if (net != null) net.Stream(beamLock, dps * dt, 0f, 0f, contact, fwd);   // сеть: урон считает сервер
+        else Combat.Hit(beamLock, dps * dt, false, contact, fwd, 0f, gun, false, ownHealth);
+        if (gun.lifeSteal > 0f) Leech(dps * dt * gun.lifeSteal);
+    }
+
+    // Лечение себя за счёт урона (Изида): в сети — через сервер вместе с уроном
+    void Leech(float amount)
+    {
+        if (net != null) net.Leech(amount);
+        else if (ownHealth != null) ownHealth.Heal(amount);
     }
 
     bool BeamValid(Health h, Vector3 origin, Vector3 fwd, float cone, float range)
@@ -1114,7 +1182,8 @@ public class TankShooter : MonoBehaviour
         nextShotTime = Time.time + gun.reloadTime * reloadMultiplier;
 
         Sfx.PlayAt(gun.shotSound, muzzle.position, 1f);
-        ParticleFx.MuzzleFlash(muzzle.position, muzzle.forward, gun.FlashColor, gun.muzzleFlash * (scoped ? 1f + charge : 1f));   // заряженный — ярче
+        float flash = scoped ? 1f + charge : 1f;   // заряженный — ярче
+        MuzzleFx(flash);
 
         if (scoped)
         {
@@ -1127,7 +1196,99 @@ public class TankShooter : MonoBehaviour
             FireRay(aim.direction, gun.damageMax * gun.quickShotFactor, gun.impact, true, 0.05f, 0.08f);
             Combat.Recoil(rb, controller, aim.direction, gun.recoil, gun.recoilStagger, muzzle.position);
         }
-        Kick(scoped ? Mathf.Lerp(0.75f, 1f, charge) : 0.75f);
+        float kick = scoped ? Mathf.Lerp(0.75f, 1f, charge) : 0.75f;
+        if (net != null) net.SendRay(aim.direction, rayEnd, rayNormal, rayFlags, flash, kick);
+        Kick(kick);
+    }
+
+    // ---------- Чужой танк в сетевом бою (NetworkTank) ----------
+    // Состояние с сети: наклон ствола, идёт ли струя / дуга, включён ли прицел Шафта, за кого держится дуга Изиды
+    public void SetRemote(float pitch, bool fire, bool scope, Health target)
+    {
+        remotePitch = pitch;
+        remoteFire = fire;
+        remoteScope = scope;
+        remoteTarget = target;
+    }
+
+    // Цель дуги Изиды (для отправки по сети)
+    public Health BeamTarget
+    {
+        get { return beamLock; }
+    }
+
+    // Длительное у чужого танка: струя, дуга и прицел — по присланному состоянию; выстрелы приходят событиями
+    void UpdateRemote()
+    {
+        Vector3 fwd = BarrelDirection;
+        aim = new AimResult { direction = fwd, point = Origin + fwd * gun.range, elevation = barrelPitch };
+        switch (gun.kind)
+        {
+            case GunKind.Cone:
+            case GunKind.Beam:
+                IsStreaming = remoteFire;
+                SetBeamVisible(remoteFire);
+                if (!remoteFire) beamLock = null;
+                else if (gun.kind == GunKind.Beam) RemoteBeam(fwd);
+                break;
+            case GunKind.Sniper:
+                IsScoping = remoteScope;
+                UpdateScopeLaser();
+                break;
+        }
+    }
+
+    // Дуга Изиды чужого танка: к той же цели, что у стрелка, иначе — свободный конец
+    void RemoteBeam(Vector3 fwd)
+    {
+        if (stream == null) return;
+        Vector3 origin = Origin;
+        Health t = remoteTarget != null && remoteTarget.Current > 0f && remoteTarget.isActiveAndEnabled ? remoteTarget : null;
+        if (t == null)
+        {
+            beamLock = null;
+            stream.SetBeam(FreeEnd(origin, fwd), null, false);
+            return;
+        }
+        if (t != beamLock)
+        {
+            beamLock = t;
+            contactLocal = t.transform.InverseTransformPoint(SurfacePoint(origin, t));
+        }
+        stream.SetBeam(WanderPoint(origin, t, Time.deltaTime), t, false);
+    }
+
+    // Прогрев Рельсы чужого танка
+    public void RemoteWindup()
+    {
+        if (gun == null || muzzle == null) return;
+        WindupFx();
+    }
+
+    // Мгновенный выстрел чужого танка: вспышка, трассер до той же точки, что у стрелка, попадание, взрыв, откат и гильза.
+    // Урона нет — его считает сервер
+    public void RemoteRay(Vector3 dir, Vector3 end, Vector3 normal, byte flags, float flash, float kick)
+    {
+        if (gun == null || muzzle == null) return;
+        if (muzzleSide > 0f) SetBarrel((flags & RayRight) != 0);
+        if (gun.kind == GunKind.Sniper) Sfx.PlayAt(gun.shotSound, muzzle.position, 1f);
+        else if (gun.windupTime <= 0f) Sfx.PlayAt(gun.shotSound, muzzle.position, 0.9f, Random.Range(0.95f, 1.05f));   // у Рельсы звук был с прогревом
+        MuzzleFx(flash);
+        if ((flags & RayExplode) != 0) ExplosionFx(end);
+        RayImpact(end, normal, (flags & RayHitAny) != 0, (flags & RayHitTank) != 0, (flags & RayCrit) != 0, (flags & RayPrimary) != 0);
+        Kick(kick);
+    }
+
+    // Плазмоид чужого танка: летит и бьётся о стены и танки так же, но урона не наносит
+    public void RemoteBolt(Vector3 dir, bool right)
+    {
+        if (gun == null || muzzle == null) return;
+        if (muzzleSide > 0f) SetBarrel(right);
+        Sfx.PlayAt(gun.shotSound, muzzle.position, 0.9f, Random.Range(0.95f, 1.05f));
+        MuzzleFx(1f);
+        Projectile p = ShotFx.Bolt(muzzle.position, gun);
+        p.Init(dir, gun, 0, ownHealth, rb, damageMultiplier, false);   // команда 0: задевает всех, кроме своего танка
+        Kick(1f);
     }
 
     // ---------- Интерфейс игрока (рисует GameManager) ----------

@@ -58,7 +58,7 @@ public class SmokeWake : MonoBehaviour
         float half = Mathf.Max(0f, size.z * 0.5f - radius * 0.7f);
         a = c + transform.forward * half;
         b = c - transform.forward * half;
-        vel = rb != null ? rb.linearVelocity : Vector3.zero;
+        vel = NetworkTank.VelocityOf(rb);   // у чужого танка в сети тело кинематическое — скорость по смещению позы
         speed = vel.magnitude;
         moving = speed > 0.5f;
         if (Time.frameCount == lastFrame) return;

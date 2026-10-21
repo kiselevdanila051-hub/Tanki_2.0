@@ -35,7 +35,7 @@ public static class TankFactory
     }
 
     // Префаб загружается один раз; если его нет (ещё не создан в редакторе), танк собирается на пустом объекте, как раньше
-    static GameObject Prefab
+    public static GameObject Prefab
     {
         get
         {
@@ -52,6 +52,16 @@ public static class TankFactory
 
     // team: 1 — игрок, 2 — враги. hullMk / gunMk — модификации 0..3 (М0..М3)
     public static GameObject Create(string name, Vector3 pos, bool isPlayer, int team, HullType hull, int hullMk, GunType gun, int gunMk)
+    {
+        GameObject root = CreateShell(name, pos, isPlayer, team);
+        root.GetComponent<TankBuilder>().Assemble(hull, hullMk, gun, gunMk);
+        if (isPlayer) root.AddComponent<PlayerInput>();
+        return root;
+    }
+
+    // Танк со всеми скриптами, но без модели и характеристик — TankBuilder.Assemble позже. Так его создаёт клиент Mirror
+    // (TankNetworkManager): комплект приходит вместе с танком и применяется в NetworkTank.OnStartClient
+    public static GameObject CreateShell(string name, Vector3 pos, bool isPlayer, int team)
     {
         GameObject root = Prefab != null ? Object.Instantiate(Prefab, pos, Quaternion.identity) : new GameObject();
         root.name = name;
@@ -86,10 +96,7 @@ public static class TankFactory
         TankBuilder builder = root.AddComponent<TankBuilder>();
         builder.isPlayer = isPlayer;
         builder.paint = isPlayer ? Paints.Selected : 0;   // краска игрока — из гаража, у ботов заводская
-        builder.Assemble(hull, hullMk, gun, gunMk);
-
-        if (isPlayer) root.AddComponent<PlayerInput>();
-        root.AddComponent<SmokeWake>();      // танк расталкивает и увлекает дым (ни от кого не зависит — последним)
+        root.AddComponent<SmokeWake>();      // танк расталкивает и увлекает дым (ни от кого не зависит — последним из скриптов танка)
         return root;
     }
 

@@ -86,7 +86,8 @@ public class Garage : MonoBehaviour
             cam.usePhysicalProperties = false;
         }
         if (scene != null) scene.Exit();
-        if (preview != null) { Destroy(preview); preview = null; }
+        TankFactory.Dispose(preview);
+        preview = null;
     }
 
     // Для GarageShot: вкладка, категория, скрыт ли интерфейс, ракурс камеры (сразу, без сглаживания)
@@ -247,7 +248,12 @@ public class Garage : MonoBehaviour
     static Texture2D Tex(Color top, Color bottom, Color border, int b = 1, int h = 32)
     {
         const int w = 16;
-        Texture2D t = new Texture2D(w, h, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+        // Ссылка на текстуру — только в стиле IMGUI (не видна сборщику ассетов): без DontUnloadUnusedAsset её уничтожает
+        // Resources.UnloadUnusedAssets (и загрузка сцены), и фон панелей гаража пропадает
+        Texture2D t = new Texture2D(w, h, TextureFormat.RGBA32, false)
+        {
+            wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear, hideFlags = HideFlags.DontUnloadUnusedAsset
+        };
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
                 t.SetPixel(x, y, (x < b || y < b || x >= w - b || y >= h - b) ? border : Color.Lerp(bottom, top, y / (h - 1f)));

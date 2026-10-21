@@ -48,6 +48,12 @@ public class ModelPieces
         return mp;
     }
 
+    // Модель выгружается (ModelLibrary.ReleaseUnused): её разбор на детали больше не нужен и не должен держать меш в памяти
+    public static void Forget(Mesh mesh)
+    {
+        cache.Remove(mesh);
+    }
+
     ModelPieces(Mesh mesh, Vector2 ring)
     {
         Vector3[] v = mesh.vertices;

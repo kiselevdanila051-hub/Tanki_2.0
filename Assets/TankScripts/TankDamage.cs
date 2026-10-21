@@ -144,7 +144,8 @@ public partial class TankDamage : MonoBehaviour
         Release();
     }
 
-    void Release()
+    // Освободить копии мешей и материалов танка (при перестройке и при разборке — TankBuilder.Disassemble)
+    public void Release()
     {
         foreach (Part p in parts)
         {
@@ -348,6 +349,12 @@ public partial class TankDamage : MonoBehaviour
         }
         inlayMeshes[m] = has;
         return has;
+    }
+
+    // Модель выгружается (ModelLibrary.ReleaseUnused) — запись о её меше больше не нужна и не должна держать его в памяти
+    public static void ForgetMesh(Mesh m)
+    {
+        inlayMeshes.Remove(m);
     }
 
     // Копия материала с шейдером Tanks/DamageLit (свойства те же, что у URP Lit)
@@ -655,6 +662,8 @@ public partial class TankDamage : MonoBehaviour
 
         tur.SetParent(null, true);
         foreach (Transform c in tur.GetComponentsInChildren<Transform>()) c.gameObject.layer = 2;   // выстрелы её не замечают
+        // коробка башни танка (TurretCollider) улетела бы вместе с башней — у обломка своя, по всей башне со стволом
+        foreach (Collider c in tur.GetComponentsInChildren<Collider>()) { c.enabled = false; Destroy(c); }
 
         BoxCollider bc = tur.gameObject.AddComponent<BoxCollider>();
         bc.center = tur.InverseTransformPoint(b.center);

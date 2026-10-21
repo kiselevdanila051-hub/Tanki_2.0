@@ -27,7 +27,6 @@ public class AimSight : MonoBehaviour
     int hitKind;
     float hitAt = -10f, killAt = -10f, lastHit = -10f;
     Vector3 hitPoint;
-    float endDist;                        // сглаженная дальность точки лазера
 
     static readonly RaycastHit[] hits = new RaycastHit[24];
 
@@ -109,15 +108,26 @@ public class AimSight : MonoBehaviour
             if (h.distance >= best || (rb != null && h.rigidbody == rb)) continue;
             Health hh = h.collider.GetComponentInParent<Health>();
             if (hh != null && (hh == health || (hh.team == health.team && health.team != 0))) continue;
-            best = h.distance;
+            float d = h.distance;
+            Vector3 nrm = h.normal;
+            // Танк: коллайдеры — коробки, точка встаёт на саму броню (иначе висела в воздухе перед наклонными листами и
+            // «цеплялась» к танку раньше времени); луч прошёл коробку мимо модели — остаётся на коробке
+            TankDamage td = hh != null ? hh.GetComponent<TankDamage>() : null;
+            float md;
+            Vector3 mn;
+            if (td != null && td.RayModel(origin, dir, range, out md, out mn) && md < d + 4f && !(md > d + 0.15f && OnTrack(hh, h.point)))
+            {
+                d = md;
+                nrm = mn;
+            }
+            if (d >= best) continue;
+            best = d;
             endHit = true;
-            normal = h.normal;
+            normal = nrm;
         }
-        // Дальность точки — со сглаживанием (~30 мс): на кромках препятствий луч перескакивает между ближней и дальней
-        // поверхностью, и точка мерцала; выстрел всё равно летит по честному лучу
-        float k = 1f - Mathf.Exp(-32f * Time.deltaTime);
-        endDist = endDist <= 0f || Mathf.Abs(endDist - best) < 0.05f ? best : Mathf.Lerp(endDist, best, k);
-        Vector3 end = origin + dir * endDist;
+        // Точка — ровно там, куда смотрит ствол, без сглаживания: сглаживание дальности тянуло её вдоль луча на кромках,
+        // и точка будто липла к граням
+        Vector3 end = origin + dir * best;
 
         // Начало — излучатель на башне; если на модели его нет — дуло (у сдвоенного ствола — между дулами)
         Vector3 from;
@@ -155,6 +165,20 @@ public class AimSight : MonoBehaviour
         Vector3 p = end + normal * 0.03f;
         Quad(dot, p, right, size, endHit ? 1f : 0.45f);
         if (flare.enabled) Quad(flare, from + dir * 0.01f, right, flareSize, 0.9f);
+    }
+
+    // Луч вошёл в коробку корпуса на гусенице (снаружи борта, не выше колёс): гусениц и катков в модели корпуса нет, и луч по
+    // модели ушёл бы за гусеницу, на корпус, — точка остаётся на коробке, где и засчитано попадание
+    static bool OnTrack(Health h, Vector3 point)
+    {
+        TankSuspension s = h.GetComponent<TankSuspension>();
+        HullRig rig = s != null ? s.Rig : null;
+        if (rig == null || rig.road == null || rig.front == null || rig.rear == null) return false;
+        Vector3 lp = h.transform.InverseTransformPoint(point);
+        if (Mathf.Abs(lp.x) < rig.beltX - rig.beltWidth * 0.5f) return false;
+        float top = Mathf.Max(rig.front.y + rig.front.r, rig.rear.y + rig.rear.r);
+        foreach (RigCircle c in rig.road) if (c != null) top = Mathf.Max(top, c.y + c.r);
+        return lp.y <= top + rig.beltThickness * 0.5f;
     }
 
     static void Quad(LineRenderer lr, Vector3 p, Vector3 right, float size, float alpha)

@@ -162,6 +162,40 @@ public partial class TankDamage
         return part != null;
     }
 
+    // Где луч (из origin по dir, мировые координаты) встречает саму модель — корпус, башню, ствол (оторванные треугольники
+    // пропускаются). Для точки лазера (AimSight): коллайдеры танка — коробки, а точка должна стоять на броне, не в воздухе
+    // перед наклонным листом. dist — от origin вдоль dir, м; normal — нормаль брони навстречу лучу
+    public bool RayModel(Vector3 origin, Vector3 dir, float maxDist, out float dist, out Vector3 normal)
+    {
+        dist = float.MaxValue;
+        normal = -dir;
+        foreach (Part p in parts)
+        {
+            if (p.gone || p.rayMesh == null || p.rend == null || !p.rend.enabled) continue;
+            Vector3 lo = p.tr.InverseTransformPoint(origin);
+            Vector3 ld = p.tr.InverseTransformDirection(dir);
+            float travelled = 0f, maxD = maxDist / p.scale;
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                int tri;
+                float d;
+                Vector3 bary;
+                if (!p.rayMesh.Raycast(lo + ld * travelled, ld, maxD - travelled, out tri, out d, out bary)) break;
+                if (p.triGone != null && p.triGone[tri]) { travelled += d + 0.002f; continue; }
+                Vector3 w = p.tr.TransformPoint(p.rayMesh.Interpolate(p.verts != null ? p.verts : p.rayMesh.verts, tri, bary));
+                float wd = Vector3.Dot(w - origin, dir);
+                if (wd < dist)
+                {
+                    dist = wd;
+                    normal = p.tr.TransformDirection(p.rayMesh.FaceNormal(p.rayMesh.verts, tri));
+                    if (Vector3.Dot(normal, dir) > 0f) normal = -normal;
+                }
+                break;
+            }
+        }
+        return dist < float.MaxValue;
+    }
+
     // ---------- Вмятина (вершины своей копии меша) ----------
     // sign 1 — внутрь брони (попадание), -1 — наружу (вспучивание взрывом изнутри)
     void DentM0(Part p, Vector3 c, Vector3 n, Vector3 dl, float r, float depth, float sign)

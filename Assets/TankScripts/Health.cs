@@ -43,10 +43,20 @@ public class Health : MonoBehaviour
         get { if (col == null) col = GetComponent<Collider>(); return col; }
     }
 
-    // Центр силуэта (по коллайдеру)
+    // Второй коллайдер танка — коробка башни (задаёт TankBuilder); MainCollider у танка — коробка корпуса с гусеницами
+    public Collider TurretCollider { get; set; }
+
+    // Центр силуэта (по коллайдеру; у танка — по корпусу вместе с башней)
     public Vector3 AimCenter
     {
-        get { Collider c = MainCollider; return c != null ? c.bounds.center : transform.position; }
+        get
+        {
+            Collider c = MainCollider;
+            if (c == null) return transform.position;
+            Bounds b = c.bounds;
+            if (TurretCollider != null && TurretCollider.enabled) b.Encapsulate(TurretCollider.bounds);
+            return b.center;
+        }
     }
 
     public void SetMax(float newMax, bool keepRatio)

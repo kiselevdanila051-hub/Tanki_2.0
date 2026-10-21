@@ -6,7 +6,7 @@ using UnityEngine;
 // Катки и гусеницы строит TrackVisuals. Ствол сидит на «шарнире» (GunPivot) — его наклоняет автонаводка; подвижные части
 // отката (RecoilModel, у моделей с recoil.obj) при выстреле двигает, детали механизма выброса (info.json «mechanism»:
 // шторки, толкатель — EjectorModel на ствольной группе, TurretMechModel на башне) приводит в движение и выбрасывает
-// гильзы TankShooter.
+// гильзы TankShooter. Коллайдеров два: коробка корпуса с гусеницами на корне танка и коробка башни (без ствола) на башне.
 public class TankBuilder : MonoBehaviour
 {
     public HullType hullType = HullType.Hunter;
@@ -16,6 +16,8 @@ public class TankBuilder : MonoBehaviour
     public bool isPlayer = false;             // игроку показываем подсказки на экране
     public int paint = 0;                     // краска (Paints): 0 — заводская окраска модели
     public float wear = -1f;                  // износ этого танка (множитель, как ползунок Paints.Wear); < 0 — общий из гаража
+
+    const float TrackClearance = 0.06f;       // низ коллайдера корпуса над землёй в покое, м (низ гусениц почти весь в коробке)
 
     GameObject model;
     HullStats hull;
@@ -60,27 +62,36 @@ public class TankBuilder : MonoBehaviour
         gunScale *= GunOnHull(gunChoice, gunModification, hullChoice);
         float turretHeight = gm != null ? gm.info.height * gunScale : 0.5f * s;
 
-        // Коллайдер охватывает корпус и башню (низ катков без коллайдера: их держит подвеска)
+        // Коллайдер корпуса — коробка по корпусу и гусеницам: по ширине до наружной кромки гусениц (если корпус уже их), по
+        // длине — до ленивца и ведущего колеса, по высоте — от низа гусениц до верха корпуса (башня — своя коробка, ниже).
+        // Низ — на TrackClearance выше земли в покое (земля — по подвеске): коробка не лежит на земле и не мешает подвеске.
+        // Раньше низ был над днищем, и катки с нижними 12–34 см гусениц попаданий не ловили
         BoxCollider box = GetComponent<BoxCollider>();
-        float colBottom, colTop;
+        float colBottom = (susp != null ? -susp.RestHeight : -0.6f) + TrackClearance;
+        float colTop, zMin, zMax, halfW, belly;
+        Vector3 inertiaBox;   // габарит танка с башней от днища — по нему инерция, как раньше (см. TankController.RefreshPhysics)
         if (rig != null)
         {
-            colBottom = rig.hullBottomY + 0.08f;
-            colTop = Mathf.Max(rig.hullTopY, mount.y + turretHeight);
-            box.size = new Vector3(rig.hullHalfWidth * 2f * 0.95f, colTop - colBottom, rig.hullHalfLength * 2f * 0.97f);
+            belly = rig.hullBottomY + 0.08f;
+            colTop = rig.hullTopY;
+            halfW = Mathf.Max(rig.hullHalfWidth * 0.95f, rig.beltX + rig.beltWidth * 0.5f);
+            zMin = -rig.hullHalfLength * 0.97f;
+            zMax = rig.hullHalfLength * 0.97f;
+            TrackSpan(rig, ref zMin, ref zMax);
+            inertiaBox = new Vector3(rig.hullHalfWidth * 2f * 0.95f, Mathf.Max(rig.hullTopY, mount.y + turretHeight) - belly,
+                                     rig.hullHalfLength * 2f * 0.97f);
         }
         else
         {
-            colBottom = -0.3f;
-            colTop = Mathf.Max(bodyTop + 0.5f * s + 0.1f, mount.y + turretHeight);
-            box.size = new Vector3(hull.bodySize.x + 2f * hull.trackWidth, colTop - colBottom, hull.trackLength);
+            belly = -0.3f;
+            colTop = bodyTop;
+            halfW = hull.bodySize.x * 0.5f + hull.trackWidth;
+            zMin = -hull.trackLength * 0.5f;
+            zMax = hull.trackLength * 0.5f;
+            inertiaBox = new Vector3(halfW * 2f, Mathf.Max(bodyTop + 0.5f * s + 0.1f, mount.y + turretHeight) - belly, hull.trackLength);
         }
-        box.center = new Vector3(0f, (colTop + colBottom) / 2f, 0f);
-        controller.RefreshPhysics();
-        // Коробка только по корпусу (без высоты башни) — для перевёрнутого танка (см. TankController.SetShapes ниже)
-        float hullTop = rig != null ? Mathf.Min(rig.hullTopY, mount.y) : bodyTop;
-        Vector3 hullBoxCenter = new Vector3(0f, (hullTop + colBottom) / 2f, 0f);
-        Vector3 hullBoxSize = new Vector3(box.size.x, Mathf.Max(0.1f, hullTop - colBottom), box.size.z);
+        box.size = new Vector3(halfW * 2f, Mathf.Max(0.1f, colTop - colBottom), zMax - zMin);
+        box.center = new Vector3(0f, (colTop + colBottom) * 0.5f, (zMax + zMin) * 0.5f);
 
         // Внешний вид: убираем старый и строим новый
         if (model != null) Destroy(model);
@@ -208,21 +219,25 @@ public class TankBuilder : MonoBehaviour
         if (mechParts.Count > 0) shooter.SetMechanism(mechParts.ToArray(), mechInfo.ToArray());
         if (spinner != null) spinner.shooter = shooter;
 
-        // Скруглённая форма башни (капсула вдоль башни по её габаритам) — включается, только когда танк перевёрнут: на плоской
-        // крыше общей коробки (она охватывает и башню) танк лежал ровно, а на башне ему не удержаться — заваливается набок
+        // Коллайдер башни — коробка по модели башни и деталям на ней (турбина, механизм выброса на башне), без ствола и
+        // ствольной группы; на башне — поворачивается вместе с ней, масштаб пушки (gunScale) берёт от неё же
         Bounds tb = gm != null && gm.turret != null ? gm.turret.bounds
                                                     : new Bounds(new Vector3(0f, 0.25f * s, 0f), new Vector3(1.6f * s, 0.5f * s, 1.8f * s));
-        GameObject shape = new GameObject("TurretShape");
-        shape.layer = gameObject.layer;
-        shape.transform.SetParent(turret.transform, false);
-        CapsuleCollider cap = shape.AddComponent<CapsuleCollider>();
-        cap.direction = 2;
-        cap.center = tb.center;
-        cap.radius = Mathf.Max(0.05f, Mathf.Min(tb.extents.x, tb.extents.y) * 0.95f);
-        cap.height = Mathf.Max(tb.size.z, cap.radius * 2f);
-        cap.sharedMaterial = box.sharedMaterial;
-        cap.enabled = false;
-        controller.SetShapes(box.center, box.size, hullBoxCenter, hullBoxSize, cap);
+        if (gm != null)
+        {
+            if (gm.spinner != null && gm.info.spinner != null) tb.Encapsulate(gm.spinner.bounds);
+            for (int k = 0; gm.mechanism != null && k < gm.mechanism.Length; k++)
+                if (gm.mechanism[k] != null && gm.info.mechanism[k] != null && gm.info.mechanism[k].onTurret) tb.Encapsulate(gm.mechanism[k].bounds);
+        }
+        GameObject turretColGo = new GameObject("TurretCollider");
+        turretColGo.layer = gameObject.layer;
+        turretColGo.transform.SetParent(turret.transform, false);
+        BoxCollider turretBox = turretColGo.AddComponent<BoxCollider>();
+        turretBox.center = tb.center;
+        turretBox.size = tb.size;
+        controller.SetTurretCollider(turretBox);
+        if (health != null) health.TurretCollider = turretBox;   // центр силуэта — по корпусу вместе с башней
+        controller.RefreshPhysics(inertiaBox);
 
         // Катки и гусеницы
         TrackVisuals visuals = GetComponent<TrackVisuals>();
@@ -235,6 +250,32 @@ public class TankBuilder : MonoBehaviour
         // Повреждения и внешний вид (материалы Tanks/DamageLit, разрушение по деталям)
         TankDamage dmg = GetComponent<TankDamage>();
         if (dmg != null) dmg.Register(model.transform);
+    }
+
+    // Разборка перед удалением танка (TankFactory.Dispose): модель со всеми деталями и коллайдер башни убираются, копии мешей
+    // и материалов (TankDamage) освобождаются сразу, а не вместе с объектом; остаётся каркас префаба
+    public void Disassemble()
+    {
+        TankDamage dmg = GetComponent<TankDamage>();
+        if (dmg != null) dmg.Release();
+        if (model != null) Destroy(model);
+        model = null;
+    }
+
+    // Длина гусеницы по разметке: от заднего края ведущего колеса до переднего края ленивца (с толщиной ленты)
+    static void TrackSpan(HullRig rig, ref float zMin, ref float zMax)
+    {
+        float t = rig.beltThickness * 0.5f;
+        WheelSpan(rig.front, t, ref zMin, ref zMax);
+        WheelSpan(rig.rear, t, ref zMin, ref zMax);
+        if (rig.road != null) foreach (RigCircle c in rig.road) WheelSpan(c, t, ref zMin, ref zMax);
+    }
+
+    static void WheelSpan(RigCircle c, float t, ref float zMin, ref float zMax)
+    {
+        if (c == null) return;
+        zMin = Mathf.Min(zMin, c.z - c.r - t);
+        zMax = Mathf.Max(zMax, c.z + c.r + t);
     }
 
     // Заглушка-коробка с частой сеткой: у обычного куба слишком мало вершин, чтобы на нём были видны вмятины

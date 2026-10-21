@@ -65,7 +65,7 @@ public class TestRange : MonoBehaviour
     public void End()
     {
         if (stand != null) { stand.End(); stand = null; }
-        foreach (Dummy d in dummies) if (d.go != null) Destroy(d.go);
+        foreach (Dummy d in dummies) TankFactory.Dispose(d.go);
         dummies.Clear();
         SetPanel(false);
         Destroy(this);
@@ -73,7 +73,7 @@ public class TestRange : MonoBehaviour
 
     void Spawn(Dummy d)
     {
-        if (d.go != null) Destroy(d.go);
+        TankFactory.Dispose(d.go);
         Vector3 pos = new Vector3(d.x, MapBuilder.GroundAt(d.x, d.z) + 1.2f, d.z);
         Vector3 look = MapBuilder.PlayerSpawn - pos;
         look.y = 0f;

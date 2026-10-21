@@ -94,7 +94,8 @@ public class TankShooter : MonoBehaviour
     const float GrabBoxLength = 4f, GrabBoxWidth = 2.6f, GrabBoxHeight = 1.8f;
     static readonly RaycastHit[] rayHits = new RaycastHit[32];
     static readonly Collider[] overlap = new Collider[128];               // без выделения памяти на каждый кадр струи
-    static readonly HashSet<Health> splashSeen = new HashSet<Health>();
+    readonly List<Health> splashTargets = new List<Health>();             // кого задел взрыв и расстояние до ближайшего коллайдера
+    readonly List<float> splashDist = new List<float>();
     static readonly HitComparer hitComparer = new HitComparer();
 
     class HitComparer : IComparer<RaycastHit>
@@ -651,20 +652,27 @@ public class TankShooter : MonoBehaviour
         return crit;
     }
 
-    // Взрыв Грома: прямое попадание уже получило полный урон, остальным — меньше с расстоянием
+    // Взрыв Грома: прямое попадание уже получило полный урон, остальным — меньше с расстоянием. У танка два коллайдера
+    // (корпус и башня): урон один раз, по расстоянию до ближайшего из них
     void Explode(Vector3 point, Health primary)
     {
         int nCols = Physics.OverlapSphereNonAlloc(point, gun.splashRadius, overlap, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-        HashSet<Health> seen = splashSeen;
-        seen.Clear();
+        splashTargets.Clear();
+        splashDist.Clear();
         for (int ci = 0; ci < nCols; ci++)
         {
             Collider c = overlap[ci];
             Health h = c.GetComponentInParent<Health>();
-            if (h == null || h == primary || !seen.Add(h) || h.Current <= 0f) continue;
-
+            if (h == null || h == primary || h.Current <= 0f) continue;
             float d = Vector3.Distance(point, c.ClosestPointOnBounds(point));
-            float f = Mathf.Lerp(1f, 0.3f, Mathf.Clamp01(d / gun.splashRadius));
+            int k = splashTargets.IndexOf(h);
+            if (k < 0) { splashTargets.Add(h); splashDist.Add(d); }
+            else if (d < splashDist[k]) splashDist[k] = d;
+        }
+        for (int i = 0; i < splashTargets.Count; i++)
+        {
+            Health h = splashTargets[i];
+            float f = Mathf.Lerp(1f, 0.3f, Mathf.Clamp01(splashDist[i] / gun.splashRadius));
             float dmg = gun.AverageDamage * f * damageMultiplier;
             Vector3 push = h.AimCenter - point;
 

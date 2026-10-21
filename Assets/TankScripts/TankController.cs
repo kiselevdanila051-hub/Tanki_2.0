@@ -19,41 +19,24 @@ public class TankController : MonoBehaviour
     TankInput input;
     StatusEffects status;
     TankSuspension suspension;
-    Collider hullCol;
-    PhysicsMaterial driveMat;                 // материал коллайдера на гусеницах (без трения)
-    bool resting;                             // перевёрнут — коллайдеру поставлено трение
+    Collider hullCol;                         // коробка корпуса с гусеницами (на корне танка)
+    Collider turretCol;                       // коробка башни (задаёт TankBuilder при сборке)
+    PhysicsMaterial driveMat;                 // материал коллайдеров на гусеницах (без трения)
+    bool resting;                             // перевёрнут — коллайдерам поставлено трение
     static PhysicsMaterial restMat;
-    // Формы коллайдера (задаёт TankBuilder): на гусеницах — коробка по корпусу и башне; перевёрнутый — коробка только по
-    // корпусу и скруглённая капсула башни, чтобы танк не лежал ровно на «крыше» коробки, а заваливался набок
-    Vector3 uprightCenter, uprightSize, hullOnlyCenter, hullOnlySize;
-    Collider turretShape;
-    bool hasShapes;
 
-    public void SetShapes(Vector3 uprightC, Vector3 uprightS, Vector3 hullC, Vector3 hullS, Collider turret)
+    public void SetTurretCollider(Collider turret)
     {
-        uprightCenter = uprightC; uprightSize = uprightS;
-        hullOnlyCenter = hullC; hullOnlySize = hullS;
-        turretShape = turret;
-        hasShapes = true;
+        turretCol = turret;
         resting = false;
-        ApplyShape(false);
+        ApplyMaterial(false);
     }
 
-    void ApplyShape(bool overturned)
+    void ApplyMaterial(bool overturned)
     {
-        if (hullCol != null) hullCol.sharedMaterial = overturned ? RestMaterial : driveMat;
-        if (!hasShapes) return;
-        BoxCollider box = hullCol as BoxCollider;
-        if (box != null)
-        {
-            box.center = overturned ? hullOnlyCenter : uprightCenter;
-            box.size = overturned ? hullOnlySize : uprightSize;
-        }
-        if (turretShape != null)
-        {
-            turretShape.sharedMaterial = overturned ? RestMaterial : driveMat;
-            turretShape.enabled = overturned;
-        }
+        PhysicsMaterial m = overturned ? RestMaterial : driveMat;
+        if (hullCol != null) hullCol.sharedMaterial = m;
+        if (turretCol != null) turretCol.sharedMaterial = m;
     }
 
     // Танк перевёрнут (подвеска считает его лежащим на боку или на крыше) — для TurretController: башня не крутится
@@ -134,12 +117,15 @@ public class TankController : MonoBehaviour
         rb.mass = stats.mass;
     }
 
-    // После смены размера коллайдера: пересчитать инерцию и опустить центр масс (танк устойчивее).
-    // По длине центр масс ставится в середину опорных катков: если катки у модели смещены назад или
-    // вперёд, а центр масс остался посередине корпуса, танк в покое клюёт носом (или кормой)
-    public void RefreshPhysics()
+    // После сборки танка: инерция и центр масс. Инерция — как у сплошной коробки inertiaBox по габариту танка с башней (так
+    // было, пока коллайдер был один), а не по двум коллайдерам: коробка башни поворачивается с башней, и автоматическая
+    // инерция менялась бы при каждом её повороте. Центр масс опущен (танк устойчивее); по длине — в середине опорных
+    // катков: если катки у модели смещены назад или вперёд, а центр масс остался посередине корпуса, танк в покое клюёт носом
+    public void RefreshPhysics(Vector3 inertiaBox)
     {
-        rb.ResetInertiaTensor();
+        Vector3 s = Vector3.Scale(inertiaBox, inertiaBox);
+        rb.inertiaTensor = new Vector3(s.y + s.z, s.x + s.z, s.x + s.y) * (rb.mass / 12f);
+        rb.inertiaTensorRotation = Quaternion.identity;
         float z = 0f;
         TankSuspension susp = GetComponent<TankSuspension>();
         if (susp != null && susp.wheelZ != null && susp.wheelZ.Length > 0)
@@ -157,7 +143,7 @@ public class TankController : MonoBehaviour
         if (overturned != resting)
         {
             resting = overturned;
-            ApplyShape(overturned);
+            ApplyMaterial(overturned);
         }
         if (overturned)
         {

@@ -1,9 +1,11 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 // Состояния игры: Гараж и Бой. Карта и враги выбираются в гараже (вкладка «Бой», BattleSettings):
 //  Арена — волны ботов с ИИ (сложность, число врагов в волне, их модификации и вооружение); Полигон — манекены без ИИ.
-// G — вернуться в гараж, R — заново после поражения (на арене).
+// G — вернуться в гараж, R — заново после поражения (на арене). Каждый танк — свой экземпляр префаба PlayerModel
+// (TankFactory); после боя танки разбираются (TankFactory.Dispose), а модели ботов и прочее ненужное выгружается из памяти.
 public class GameManager : MonoBehaviour
 {
     public static bool UiOpen;                 // открыта панель (курсор свободен)
@@ -118,7 +120,7 @@ public class GameManager : MonoBehaviour
 
     void SpawnPlayer()
     {
-        if (player != null) Destroy(player);
+        if (player != null) TankFactory.Dispose(player);
         player = TankFactory.Create("Player Tank", MapBuilder.PlayerSpawn, true, 1, chosenHull, chosenHullMk, chosenGun, chosenGunMk);
         playerHealth = player.GetComponent<Health>();
         playerInput = player.GetComponent<PlayerInput>();
@@ -144,11 +146,12 @@ public class GameManager : MonoBehaviour
 
     void CleanupBattle()
     {
+        bool hadBattle = player != null || enemies.Count > 0 || testRange != null;
         foreach (Health e in enemies)
-            if (e != null) Destroy(e.gameObject);
+            if (e != null) TankFactory.Dispose(e.gameObject);
         enemies.Clear();
         if (testRange != null) { testRange.End(); testRange = null; }
-        if (player != null) Destroy(player);
+        TankFactory.Dispose(player);
         player = null;
         playerHealth = null;
         playerInput = null;
@@ -163,6 +166,17 @@ public class GameManager : MonoBehaviour
         ShotFx.Clear();
         ShellFx.Clear();
         Fx.ClearPool();
+        if (hadBattle) StartCoroutine(ReleaseMemory());
+    }
+
+    // Модели боя (у ботов — случайные корпуса и пушки), их данные разрушения и текстуры не держим между боями. Через кадр —
+    // когда разобранные танки уже удалены: остаётся только то, что нужно оставшимся танкам (на подиуме гаража, новому бою).
+    // Resources.UnloadUnusedAssets не вызывать: он уничтожал и текстуры, на которые ссылаются только стили IMGUI (фон панелей
+    // гаража становился прозрачным), — ModelLibrary выгружает свои меши и текстуры сам
+    IEnumerator ReleaseMemory()
+    {
+        yield return null;
+        ModelLibrary.ReleaseUnused();
     }
 
     // ---------- Бой ----------

@@ -126,14 +126,93 @@ public static class ModelLibrary
         m.material = MakeMaterial(folder, m.rig.color, m.rig.smoothness, m.rig.metallic);
 
         // Увеличение модели (modelScale в rig.json): масштабируются меш и разметка ходовой
-        float k = m.rig.modelScale;
-        if (k > 0f && Mathf.Abs(k - 1f) > 0.001f)
+        if (Scaled(m.rig))
         {
-            m.rig.ScaleBy(k);
-            m.hull = ScaledMesh(m.hull, k);
+            m.rig.ScaleBy(m.rig.modelScale);
+            m.hull = ScaledMesh(m.hull, m.rig.modelScale);
         }
         return m;
     }
+
+    static bool Scaled(HullRig rig)
+    {
+        return rig.modelScale > 0f && Mathf.Abs(rig.modelScale - 1f) > 0.001f;
+    }
+
+    // Освободить модели, которые не нужны ни одному танку на сцене (танку в гараже, остову): после боя в кэше остаются корпуса
+    // и пушки ботов. Данные разрушения по их мешам (DamageMesh, ModelPieces, TankDamage) забываются, материалы и увеличенные
+    // копии мешей уничтожаются, меши и текстуры из Resources выгружаются по одному (Resources.UnloadAsset; если на них ещё
+    // ссылается, скажем, обломок, Unity подгрузит заново). Resources.UnloadUnusedAssets здесь не годится — он уничтожает и чужие
+    // текстуры, созданные в коде. Вызывать, когда разобранные танки уже удалены (не в том же кадре). Возвращает число моделей
+    public static int ReleaseUnused()
+    {
+        HashSet<string> keep = new HashSet<string>();
+        foreach (TankBuilder b in Object.FindObjectsByType<TankBuilder>(FindObjectsInactive.Include))
+        {
+            string h = HullFolder(b.hullType, b.hullMk);
+            if (h != null) keep.Add(h);
+            string g = GunFolder(b.gunType, b.gunMk);
+            if (g != null) keep.Add(g);
+        }
+
+        int freed = 0;
+        foreach (string folder in new List<string>(hulls.Keys))
+        {
+            HullModel m = hulls[folder];
+            if (m == null || keep.Contains(folder)) continue;   // null — модели нет, запоминаем, чтобы не искать заново
+            hulls.Remove(folder);
+            if (Scaled(m.rig)) { Forget(m.hull); Object.Destroy(m.hull); }
+            else Free(m.hull);
+            Object.Destroy(m.material);
+            FreeTextures(folder);
+            freed++;
+        }
+        foreach (string folder in new List<string>(guns.Keys))
+        {
+            GunModel m = guns[folder];
+            if (m == null || keep.Contains(folder)) continue;
+            guns.Remove(folder);
+            Free(m.turret);
+            Free(m.barrel);
+            Free(m.recoil);
+            Free(m.recoil2);
+            Free(m.spinner);
+            if (m.mechanism != null) foreach (Mesh mm in m.mechanism) Free(mm);
+            Object.Destroy(m.material);
+            Object.Destroy(m.barrelMaterial);
+            FreeTextures(folder);
+            freed++;
+        }
+        return freed;
+    }
+
+    static void Forget(Mesh mesh)
+    {
+        if (mesh == null) return;
+        DamageMesh.Forget(mesh);
+        ModelPieces.Forget(mesh);
+        TankDamage.ForgetMesh(mesh);
+    }
+
+    // Меш из Resources: забыть данные разрушения и выгрузить
+    static void Free(Mesh mesh)
+    {
+        if (mesh == null) return;
+        Forget(mesh);
+        Resources.UnloadAsset(mesh);
+    }
+
+    // Текстуры модели (MakeMaterial) — уже загруженные: Resources.Load их только находит
+    static void FreeTextures(string folder)
+    {
+        foreach (string name in TextureNames)
+        {
+            Texture2D t = Resources.Load<Texture2D>(folder + "/" + name);
+            if (t != null) Resources.UnloadAsset(t);
+        }
+    }
+
+    static readonly string[] TextureNames = { "albedo", "normal", "ms" };
 
     static Mesh ScaledMesh(Mesh src, float k)
     {

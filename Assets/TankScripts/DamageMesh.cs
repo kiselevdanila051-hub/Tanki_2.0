@@ -39,6 +39,12 @@ public class DamageMesh
         return dm;
     }
 
+    // Модель выгружается (ModelLibrary.ReleaseUnused): её данные больше не нужны и не должны держать меш в памяти
+    public static void Forget(Mesh mesh)
+    {
+        cache.Remove(mesh);
+    }
+
     DamageMesh(Mesh mesh)
     {
         verts = mesh.vertices;
@@ -265,7 +271,11 @@ public class DamageMesh
                 Vector3 a = cur[tris[t * 3]];
                 n += Vector3.Cross(cur[tris[t * 3 + 1]] - a, cur[tris[t * 3 + 2]] - a);
             }
-            if (n.sqrMagnitude > 1e-20f) nrm[u] = n.normalized;
+            // Делим на длину сами: Vector3.normalized при длине до 1e-5 возвращает НОЛЬ — у мелких треугольников (заклёпки,
+            // болты, фаски) после вмятины нормаль обнулялась, шейдер брони получал NaN, и bloom раздувал эти пиксели в белый
+            // шар с чёрной точкой в центре, который оставался на месте попадания
+            float sq = n.sqrMagnitude;
+            if (sq > 1e-20f) nrm[u] = n / Mathf.Sqrt(sq);
         }
     }
 

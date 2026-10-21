@@ -84,7 +84,7 @@ public class DeformationStand : MonoBehaviour
 
     public void End()
     {
-        foreach (Slot s in slots) if (s.go != null) Destroy(s.go);
+        foreach (Slot s in slots) TankFactory.Dispose(s.go);
         slots.Clear();
         if (panel) SetPanel(false);
         Destroy(this);
@@ -92,7 +92,7 @@ public class DeformationStand : MonoBehaviour
 
     void Spawn(Slot s)
     {
-        if (s.go != null) Destroy(s.go);
+        TankFactory.Dispose(s.go);
         Vector3 pos = new Vector3(s.spot.x, MapBuilder.GroundAt(s.spot.x, s.spot.z) + 1.2f, s.spot.z);
         Vector3 look = MapBuilder.StandFiringPoint - pos;
         look.y = 0f;

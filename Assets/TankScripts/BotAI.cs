@@ -14,14 +14,17 @@ public class BotAI : MonoBehaviour
     TankInput input;
     TankShooter shooter;
     TurretController turretCtrl;
+    Rigidbody rb;
     float activeTime, nextWobble, wobbleThrottle, nextLosCheck, aimError;
     bool hasLos;
+    static readonly RaycastHit[] losHits = new RaycastHit[32];
 
     void Awake()
     {
         input = GetComponent<TankInput>();
         shooter = GetComponent<TankShooter>();
         turretCtrl = GetComponent<TurretController>();
+        rb = GetComponent<Rigidbody>();
     }
 
     void Start()
@@ -110,12 +113,22 @@ public class BotAI : MonoBehaviour
         input.Fire = hasLos && dist <= gun.range * 0.95f && aimErr < 6f;
     }
 
+    // Цель видна, если первое на луче (кроме своего танка: луч из центра корпуса может пройти сквозь свою башню) — игрок
     bool HasLineOfSight(Vector3 from)
     {
         Vector3 d = target.position - from;
-        RaycastHit hit;
-        if (Physics.Raycast(from, d.normalized, out hit, d.magnitude + 1f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-            return hit.collider.GetComponentInParent<PlayerInput>() != null;
-        return false;
+        float len = d.magnitude;
+        if (len < 0.01f) return true;
+        int n = Physics.RaycastNonAlloc(from, d / len, losHits, len + 1f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        float best = float.MaxValue;
+        bool player = false;
+        for (int i = 0; i < n; i++)
+        {
+            RaycastHit hit = losHits[i];
+            if ((rb != null && hit.rigidbody == rb) || hit.distance >= best) continue;
+            best = hit.distance;
+            player = hit.collider.GetComponentInParent<PlayerInput>() != null;
+        }
+        return player;
     }
 }

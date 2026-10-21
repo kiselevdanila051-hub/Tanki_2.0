@@ -6,7 +6,8 @@ using UnityEngine;
 // Катки и гусеницы строит TrackVisuals. Ствол сидит на «шарнире» (GunPivot) — его наклоняет автонаводка; подвижные части
 // отката (RecoilModel, у моделей с recoil.obj) при выстреле двигает, детали механизма выброса (info.json «mechanism»:
 // шторки, толкатель — EjectorModel на ствольной группе, TurretMechModel на башне) приводит в движение и выбрасывает
-// гильзы TankShooter. Коллайдеров два: коробка корпуса с гусеницами на корне танка и коробка башни (без ствола) на башне.
+// гильзы TankShooter. Коллайдеры: коробка корпуса от днища на корне танка (физика; катки держит подвеска), коробка башни
+// (без ствола) на башне и коробка попаданий TrackHitbox по корпусу с гусеницами — в столкновениях не участвует.
 public class TankBuilder : MonoBehaviour
 {
     public HullType hullType = HullType.Hunter;
@@ -62,18 +63,20 @@ public class TankBuilder : MonoBehaviour
         gunScale *= GunOnHull(gunChoice, gunModification, hullChoice);
         float turretHeight = gm != null ? gm.info.height * gunScale : 0.5f * s;
 
-        // Коллайдер корпуса — коробка по корпусу и гусеницам: по ширине до наружной кромки гусениц (если корпус уже их), по
-        // длине — до ленивца и ведущего колеса, по высоте — от низа гусениц до верха корпуса (башня — своя коробка, ниже).
-        // Низ — на TrackClearance выше земли в покое (земля — по подвеске): коробка не лежит на земле и не мешает подвеске.
-        // Раньше низ был над днищем, и катки с нижними 12–34 см гусениц попаданий не ловили
+        // Коллайдеры корпуса. Физика — коробка корпуса от днища до верха (башня — своя коробка, ниже): катки и низ гусениц держит
+        // подвеска, под днище уходят брёвна и доски. Попадания — ещё коробка TrackHitbox по корпусу с гусеницами: по ширине до
+        // наружной кромки гусениц, по длине — до ленивца и ведущего колеса, по высоте — от TrackClearance над землёй в покое;
+        // в столкновениях она не участвует (excludeLayers — все слои), её видят только лучи и проверки попаданий. 21.10 низ
+        // физической коробки опускали до гусениц — танк ложился коробкой на любое препятствие выше 6 см и не мог его переехать
         BoxCollider box = GetComponent<BoxCollider>();
-        float colBottom = (susp != null ? -susp.RestHeight : -0.6f) + TrackClearance;
+        float hitBottom = (susp != null ? -susp.RestHeight : -0.6f) + TrackClearance;
         float colTop, zMin, zMax, halfW, belly;
         Vector3 inertiaBox;   // габарит танка с башней от днища — по нему инерция, как раньше (см. TankController.RefreshPhysics)
         if (rig != null)
         {
             belly = rig.hullBottomY + 0.08f;
             colTop = rig.hullTopY;
+            box.size = new Vector3(rig.hullHalfWidth * 2f * 0.95f, Mathf.Max(0.1f, colTop - belly), rig.hullHalfLength * 2f * 0.97f);
             halfW = Mathf.Max(rig.hullHalfWidth * 0.95f, rig.beltX + rig.beltWidth * 0.5f);
             zMin = -rig.hullHalfLength * 0.97f;
             zMax = rig.hullHalfLength * 0.97f;
@@ -88,15 +91,27 @@ public class TankBuilder : MonoBehaviour
             halfW = hull.bodySize.x * 0.5f + hull.trackWidth;
             zMin = -hull.trackLength * 0.5f;
             zMax = hull.trackLength * 0.5f;
+            box.size = new Vector3(halfW * 2f, Mathf.Max(0.1f, colTop - belly), hull.trackLength);
             inertiaBox = new Vector3(halfW * 2f, Mathf.Max(bodyTop + 0.5f * s + 0.1f, mount.y + turretHeight) - belly, hull.trackLength);
         }
-        box.size = new Vector3(halfW * 2f, Mathf.Max(0.1f, colTop - colBottom), zMax - zMin);
-        box.center = new Vector3(0f, (colTop + colBottom) * 0.5f, (zMax + zMin) * 0.5f);
+        box.center = new Vector3(0f, (colTop + belly) * 0.5f, 0f);
+        Vector3 hitSize = new Vector3(halfW * 2f, Mathf.Max(0.1f, colTop - hitBottom), zMax - zMin);
+        Vector3 hitCenter = new Vector3(0f, (colTop + hitBottom) * 0.5f, (zMax + zMin) * 0.5f);
 
         // Внешний вид: убираем старый и строим новый
         if (model != null) Destroy(model);
         model = new GameObject("Model");
         model.transform.SetParent(transform, false);
+
+        // Коробка попаданий по гусеницам и каткам (вместе с моделью пересоздаётся и уходит при разборке)
+        GameObject hitGo = new GameObject("TrackHitbox");
+        hitGo.layer = gameObject.layer;
+        hitGo.transform.SetParent(model.transform, false);
+        BoxCollider hitBox = hitGo.AddComponent<BoxCollider>();
+        hitBox.center = hitCenter;
+        hitBox.size = hitSize;
+        hitBox.excludeLayers = ~0;               // ни с чем не сталкивается — только лучи и проверки попаданий
+        hitBox.layerOverridePriority = 1000;     // её исключение слоёв важнее настроек других коллайдеров
 
         Color dark = new Color(0.15f, 0.15f, 0.15f);
 
